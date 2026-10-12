@@ -18,6 +18,7 @@ export const App: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isFilling, setIsFilling] = useState(false);
+  const [activeFrameId, setActiveFrameId] = useState<number | undefined>(undefined);
   const [banner, setBanner] = useState<BannerMessage | null>(null);
 
   // Load user settings on startup
@@ -133,13 +134,75 @@ export const App: React.FC = () => {
     }
 
     try {
-      const response: ScanQuestionsResponse = await chrome.tabs.sendMessage(tabId, {
-        action: 'SCAN_QUESTIONS',
-      });
+      let response: ScanQuestionsResponse | null = null;
+      let foundFrameId: number | undefined = undefined;
 
-      if (!response.success || !response.questions) {
-        throw new Error(response.error || 'Question scan failed.');
+      // 1. Try scanning top frame (frame 0)
+      try {
+        const topRes: ScanQuestionsResponse = await chrome.tabs.sendMessage(tabId, {
+          action: 'SCAN_QUESTIONS',
+        });
+        if (topRes && topRes.success && topRes.questions && topRes.questions.length > 0) {
+          response = topRes;
+          foundFrameId = 0;
+        }
+      } catch (topErr) {
+        console.warn('Top frame scan warning:', topErr);
       }
+
+      // 2. If top frame had 0 questions, search all child iframes (Macmillan embeds activity in iframes)
+      if (!response || !response.questions || response.questions.length === 0) {
+        try {
+          const frameResults = await chrome.scripting.executeScript({
+            target: { tabId, allFrames: true },
+            func: () => {
+              const inputs = document.querySelectorAll(
+                'input:not([type="hidden"]), select, textarea, [contenteditable="true"], [role="textbox"], [role="radio"], [class*="gap"], [class*="blank"], [class*="activity"]'
+              );
+              return {
+                inputsCount: inputs.length,
+                url: window.location.href,
+              };
+            },
+          });
+
+          for (const fr of frameResults) {
+            if (fr.frameId !== 0 && (fr.result?.inputsCount || 0) > 0) {
+              try {
+                // Ensure content script is ready in this sub-frame
+                await chrome.scripting
+                  .executeScript({
+                    target: { tabId, frameIds: [fr.frameId] },
+                    files: ['content.js'],
+                  })
+                  .catch(() => {});
+
+                const frameRes: ScanQuestionsResponse = await chrome.tabs.sendMessage(
+                  tabId,
+                  { action: 'SCAN_QUESTIONS' },
+                  { frameId: fr.frameId }
+                );
+
+                if (frameRes && frameRes.success && frameRes.questions && frameRes.questions.length > 0) {
+                  response = frameRes;
+                  foundFrameId = fr.frameId;
+                  break;
+                }
+              } catch (subErr) {
+                console.warn('Sub-frame scan warning:', subErr);
+              }
+            }
+          }
+        } catch (frameErr) {
+          console.warn('Frame discovery error:', frameErr);
+        }
+      }
+
+      if (!response || !response.questions) {
+        throw new Error(response?.error || 'Question scan failed.');
+      }
+
+      setActiveFrameId(foundFrameId);
 
       if (response.platform) {
         setPlatform(response.platform);
@@ -149,7 +212,7 @@ export const App: React.FC = () => {
         setItems([]);
         setBanner({
           type: 'info',
-          text: 'No homework questions detected on the current page.',
+          text: 'No homework questions detected on this page. If this is an iframe or dynamic view, please wait for it to fully load.',
         });
       } else {
         const reviewItems: AnswerReviewItem[] = response.questions.map((q) => ({
@@ -161,7 +224,9 @@ export const App: React.FC = () => {
         setItems(reviewItems);
         setBanner({
           type: 'success',
-          text: `Successfully detected ${reviewItems.length} question${reviewItems.length === 1 ? '' : 's'}.`,
+          text: `Detected ${reviewItems.length} question${reviewItems.length === 1 ? '' : 's'}${
+            foundFrameId !== 0 && foundFrameId !== undefined ? ' (inside activity frame)' : ''
+          }.`,
         });
       }
     } catch (err) {
@@ -270,11 +335,16 @@ export const App: React.FC = () => {
       );
 
       try {
-        const response: FillApprovedAnswerResponse = await chrome.tabs.sendMessage(tabId, {
-          action: 'FILL_APPROVED_ANSWER',
-          question: item.question,
-          answer: item.userEditedAnswer,
-        });
+        const sendOpts = activeFrameId !== undefined ? { frameId: activeFrameId } : {};
+        const response = (await chrome.tabs.sendMessage(
+          tabId,
+          {
+            action: 'FILL_APPROVED_ANSWER',
+            question: item.question,
+            answer: item.userEditedAnswer,
+          },
+          sendOpts
+        )) as FillApprovedAnswerResponse;
 
         if (response && response.success) {
           successCount++;
@@ -347,10 +417,15 @@ export const App: React.FC = () => {
     const tabId = await getActiveTabId();
     if (!tabId) return;
     try {
-      await chrome.tabs.sendMessage(tabId, {
-        action: 'HIGHLIGHT_FIELD',
-        selector,
-      });
+      const sendOpts = activeFrameId !== undefined ? { frameId: activeFrameId } : {};
+      await chrome.tabs.sendMessage(
+        tabId,
+        {
+          action: 'HIGHLIGHT_FIELD',
+          selector,
+        },
+        sendOpts
+      );
     } catch (err) {
       console.warn('Could not highlight field:', err);
     }

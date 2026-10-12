@@ -19,13 +19,10 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.macmillaneducationeverywhere.com/*",
-        "https://*.macmillanenglish.com/*",
-        "https://*.languagehub.macmillaneducation.com/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*",
-        "file:///*"
+        "<all_urls>"
       ],
+      "all_frames": true,
+      "match_about_blank": true,
       "js": ["content.js"],
       "run_at": "document_idle"
     }

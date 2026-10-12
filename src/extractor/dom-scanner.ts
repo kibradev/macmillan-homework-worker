@@ -88,25 +88,66 @@ function findLabelForElement(inputEl: HTMLElement): string {
   return '';
 }
 
+export function queryAllDeep(root: Document | Element | ShadowRoot, selector: string): HTMLElement[] {
+  const results: HTMLElement[] = [];
+
+  try {
+    const matched = Array.from(root.querySelectorAll(selector)) as HTMLElement[];
+    results.push(...matched);
+  } catch {}
+
+  // Pierce shadow roots and same-origin iframes recursively
+  const allElements = Array.from(root.querySelectorAll('*'));
+  for (const el of allElements) {
+    if (el.shadowRoot) {
+      results.push(...queryAllDeep(el.shadowRoot, selector));
+    }
+    if (el instanceof HTMLIFrameElement) {
+      try {
+        if (el.contentDocument && el.contentDocument.body) {
+          results.push(...queryAllDeep(el.contentDocument, selector));
+        }
+      } catch {
+        // Cross-origin iframe
+      }
+    }
+  }
+
+  // Deduplicate
+  return Array.from(new Set(results));
+}
+
 export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
   const questions: Question[] = [];
 
-  // Look for potential question container elements
+  // Look for potential question container elements (including Macmillan specific classes)
   const containerSelectors = [
     '.exercise-item',
     '.question-card',
     '.question-item',
+    '.question-wrapper',
     '.question',
     '.quiz-item',
+    '.task-item',
+    '.activity-item',
+    '.activity-content',
+    '[class*="activity-item"]',
+    '[class*="question-item"]',
+    '[class*="exercise-item"]',
+    '[class*="gap-fill"]',
+    '[class*="task-"]',
     '[data-question-id]',
     '[data-question]',
+    '[data-activity-id]',
+    'mee-activity',
+    'mhe-activity',
+    'mhe-question',
     'fieldset',
     '.form-group',
     'li.exercise',
-    '.task-item',
   ];
 
-  const matchedContainers = Array.from(doc.querySelectorAll(containerSelectors.join(','))) as HTMLElement[];
+  const matchedContainers = queryAllDeep(doc, containerSelectors.join(','));
 
   if (matchedContainers.length > 0) {
     let index = 1;
@@ -121,17 +162,18 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
 
   // Fallback: If no recognized containers were found, scan all interactive form elements directly
   if (questions.length === 0) {
-    const interactiveElements = Array.from(
-      doc.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea')
-    ) as HTMLElement[];
+    const interactiveElements = queryAllDeep(
+      doc,
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea, [contenteditable="true"], [role="textbox"], [role="radio"], [class*="blank-input"], [class*="gap-input"]'
+    );
 
     // Group radio buttons by name
     const radioGroups = new Map<string, HTMLElement[]>();
     const standaloneFields: HTMLElement[] = [];
 
     for (const el of interactiveElements) {
-      if (el instanceof HTMLInputElement && el.type === 'radio') {
-        const name = el.name || 'unnamed_radio';
+      if ((el instanceof HTMLInputElement && el.type === 'radio') || el.getAttribute('role') === 'radio') {
+        const name = (el as HTMLInputElement).name || el.getAttribute('data-group') || 'unnamed_radio';
         if (!radioGroups.has(name)) radioGroups.set(name, []);
         radioGroups.get(name)!.push(el);
       } else {
