@@ -331,6 +331,7 @@ export const App: React.FC = () => {
       );
 
       // Merge suggestions into review items
+      const autoApprove = settings.autoApproveAll ?? true;
       const updatedItems: AnswerReviewItem[] = items.map((item) => {
         const suggestion = result.suggestions.find((s) => s.questionId === item.question.id);
         const suggestedAnswer = suggestion?.suggestedAnswer || '';
@@ -340,17 +341,28 @@ export const App: React.FC = () => {
           ...item,
           suggestion,
           userEditedAnswer: suggestedAnswer,
-          // Auto-approve if high confidence, but let user uncheck
-          approved: meetsConfidence && Boolean(suggestedAnswer),
+          approved: autoApprove ? Boolean(suggestedAnswer) : meetsConfidence && Boolean(suggestedAnswer),
           fillStatus: 'idle',
         };
       });
 
       setItems(updatedItems);
-      setBanner({
-        type: 'success',
-        text: `Generated suggestions using ${aiProvider.name} (${result.modelUsed}).`,
-      });
+
+      // Auto-fill answers if setting is enabled
+      if (settings.autoFillOnGenerate) {
+        setBanner({
+          type: 'info',
+          text: `Generated answers! Automatically filling fields into page...`,
+        });
+        setTimeout(() => {
+          fillItemsList(updatedItems);
+        }, 150);
+      } else {
+        setBanner({
+          type: 'success',
+          text: `Generated suggestions using ${aiProvider.name} (${result.modelUsed}).`,
+        });
+      }
     } catch (err) {
       setBanner({
         type: 'error',
@@ -361,11 +373,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleFillApproved = async () => {
+  const fillItemsList = async (itemList: AnswerReviewItem[]) => {
     const tabId = await getActiveTabId();
     if (!tabId) return;
 
-    const approvedIndices = items
+    const approvedIndices = itemList
       .map((item, idx) => (item.approved && item.userEditedAnswer ? idx : -1))
       .filter((idx) => idx !== -1);
 
@@ -378,13 +390,12 @@ export const App: React.FC = () => {
     }
 
     setIsFilling(true);
-    setBanner(null);
 
     let successCount = 0;
     let failCount = 0;
 
     for (const idx of approvedIndices) {
-      const item = items[idx];
+      const item = itemList[idx];
 
       // Mark filling
       setItems((prev) =>
@@ -446,6 +457,10 @@ export const App: React.FC = () => {
         text: `Filled ${successCount} fields. ${failCount} fields could not be matched.`,
       });
     }
+  };
+
+  const handleFillApproved = async () => {
+    await fillItemsList(items);
   };
 
   const handleUpdateAnswer = (index: number, newAnswer: string) => {

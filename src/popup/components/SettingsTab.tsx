@@ -231,10 +231,48 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
         )}
       </div>
 
+      {/* Automation Preferences */}
+      <div className="security-note">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+          <Zap size={14} />
+          <span>Automation & Auto-Fill</span>
+        </div>
+        <label className="approval-toggle" style={{ marginTop: '3px' }}>
+          <input
+            type="checkbox"
+            checked={localSettings.autoFillOnGenerate}
+            onChange={(e) =>
+              setLocalSettings((prev) => ({
+                ...prev,
+                autoFillOnGenerate: e.target.checked,
+              }))
+            }
+          />
+          <span style={{ fontSize: '11px' }}>
+            Automatically fill fields as soon as AI generates answers
+          </span>
+        </label>
+        <label className="approval-toggle" style={{ marginTop: '2px' }}>
+          <input
+            type="checkbox"
+            checked={localSettings.autoApproveAll}
+            onChange={(e) =>
+              setLocalSettings((prev) => ({
+                ...prev,
+                autoApproveAll: e.target.checked,
+              }))
+            }
+          />
+          <span style={{ fontSize: '11px' }}>
+            Auto-approve all suggestions by default
+          </span>
+        </label>
+      </div>
+
       {/* Security notice & Session storage toggle */}
       <div className="security-note">
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-          <ShieldCheck size={14} color="var(--accent-primary)" />
+          <ShieldCheck size={14} />
           <span>Local-First & Client-Side Privacy</span>
         </div>
         <div>

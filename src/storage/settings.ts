@@ -7,6 +7,8 @@ export interface UserSettings {
   saveKeyToSessionOnly: boolean;
   theme: 'dark' | 'light' | 'system';
   confidenceThreshold: number;
+  autoFillOnGenerate: boolean;
+  autoApproveAll: boolean;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -24,6 +26,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   saveKeyToSessionOnly: true,
   theme: 'dark',
   confidenceThreshold: 0.7,
+  autoFillOnGenerate: true,
+  autoApproveAll: true,
 };
 
 const STORAGE_KEY = 'studypilot_settings';
