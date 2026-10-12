@@ -1,5 +1,4 @@
-import React from 'react';
-import { Compass, Moon, Sun, Settings, Sparkles } from 'lucide-react';
+import { Compass, Moon, Sun, Settings, Sparkles, PanelRight } from 'lucide-react';
 import { PlatformDetectionResult } from '../../types/platform';
 
 interface HeaderProps {
@@ -8,6 +7,7 @@ interface HeaderProps {
   platform: PlatformDetectionResult | null;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
+  onOpenSidePanel?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -16,6 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   platform,
   theme,
   toggleTheme,
+  onOpenSidePanel,
 }) => {
   const isMacmillan = platform?.id === 'macmillan';
 
@@ -34,6 +35,16 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="header-actions">
+          {onOpenSidePanel && (
+            <button
+              className="icon-btn"
+              onClick={onOpenSidePanel}
+              title="Open in Chrome Side Panel (stays open permanently on screen)"
+            >
+              <PanelRight size={14} />
+            </button>
+          )}
+
           <button
             className="icon-btn"
             onClick={toggleTheme}

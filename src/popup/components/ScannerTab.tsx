@@ -18,6 +18,7 @@ interface ScannerTabProps {
   onToggleAllApprovals: () => void;
   onHighlightField: (selector: string) => void;
   onOpenSettings: () => void;
+  onClear?: () => void;
 }
 
 export const ScannerTab: React.FC<ScannerTabProps> = ({
@@ -35,6 +36,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
   onToggleAllApprovals,
   onHighlightField,
   onOpenSettings,
+  onClear,
 }) => {
   const approvedCount = items.filter((i) => i.approved).length;
   const suggestionsCount = items.filter((i) => !!i.suggestion).length;
@@ -62,22 +64,35 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
         </button>
 
         {items.length > 0 && (
-          <button
-            className="btn btn-secondary"
-            onClick={onGenerate}
-            disabled={isGenerating || isScanning || isFilling}
-            title={hasApiKey ? `Generate with ${activeProviderName}` : 'Set API key in Settings first'}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 size={15} className="spin" /> Thinking...
-              </>
-            ) : (
-              <>
-                <Sparkles size={15} /> Suggestions
-              </>
+          <>
+            <button
+              className="btn btn-secondary"
+              onClick={onGenerate}
+              disabled={isGenerating || isScanning || isFilling}
+              title={hasApiKey ? `Generate with ${activeProviderName}` : 'Set API key in Settings first'}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 size={15} className="spin" /> Thinking...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={15} /> Suggestions
+                </>
+              )}
+            </button>
+
+            {onClear && (
+              <button
+                className="icon-btn"
+                style={{ width: '36px', height: '36px', flexShrink: 0 }}
+                onClick={onClear}
+                title="Clear current questions & start fresh"
+              >
+                <RefreshCw size={14} />
+              </button>
             )}
-          </button>
+          </>
         )}
       </div>
 

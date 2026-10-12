@@ -6,6 +6,7 @@ import { BannerMessage, StatusBanner } from './components/StatusBanner';
 import { AnswerReviewItem } from '../types/answer';
 import { PlatformDetectionResult } from '../types/platform';
 import { loadSettings, saveSettings, UserSettings, getActiveProviderConfig } from '../storage/settings';
+import { loadTabHomeworkCache, saveTabHomeworkCache, clearTabHomeworkCache } from '../storage/session-cache';
 import { getAIProvider } from '../ai';
 import { ScanQuestionsResponse, FillApprovedAnswerResponse } from '../types/messages';
 
@@ -30,10 +31,39 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Detect current platform on popup open
+  // Detect current platform and restore cached homework questions for this tab
   useEffect(() => {
     detectActiveTabPlatform();
+
+    const restoreCache = async () => {
+      const tab = await getActiveTab();
+      if (tab?.id && tab.url) {
+        const cached = await loadTabHomeworkCache(tab.id, tab.url);
+        if (cached && cached.items && cached.items.length > 0) {
+          setItems(cached.items);
+          if (cached.activeFrameId !== undefined) {
+            setActiveFrameId(cached.activeFrameId);
+          }
+          setBanner({
+            type: 'info',
+            text: `Restored ${cached.items.length} questions from current session.`,
+          });
+        }
+      }
+    };
+    restoreCache();
   }, []);
+
+  // Auto-save questions to cache whenever items change
+  useEffect(() => {
+    if (items.length > 0) {
+      getActiveTab().then((tab) => {
+        if (tab?.id && tab.url) {
+          saveTabHomeworkCache(tab.id, tab.url, items, activeFrameId);
+        }
+      });
+    }
+  }, [items, activeFrameId]);
 
   const toggleTheme = () => {
     const nextTheme: 'dark' | 'light' = theme === 'dark' ? 'light' : 'dark';
@@ -46,10 +76,37 @@ export const App: React.FC = () => {
     }
   };
 
-  const getActiveTabId = async (): Promise<number | null> => {
+  const getActiveTab = async (): Promise<chrome.tabs.Tab | null> => {
     if (typeof chrome === 'undefined' || !chrome.tabs) return null;
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab ?? null;
+  };
+
+  const getActiveTabId = async (): Promise<number | null> => {
+    const tab = await getActiveTab();
     return tab?.id ?? null;
+  };
+
+  const handleClear = async () => {
+    setItems([]);
+    setActiveFrameId(undefined);
+    setBanner(null);
+    const tabId = await getActiveTabId();
+    if (tabId) {
+      await clearTabHomeworkCache(tabId);
+    }
+  };
+
+  const handleOpenSidePanel = async () => {
+    const tab = await getActiveTab();
+    if (tab?.id && typeof chrome !== 'undefined' && (chrome as any).sidePanel?.open) {
+      try {
+        await (chrome as any).sidePanel.open({ tabId: tab.id });
+        window.close(); // Close small popup as side panel is now open
+      } catch (err) {
+        console.warn('Could not open sidePanel:', err);
+      }
+    }
   };
 
   const ensureContentScriptInjected = async (tabId: number): Promise<boolean> => {
@@ -458,6 +515,7 @@ export const App: React.FC = () => {
         platform={platform}
         theme={theme}
         toggleTheme={toggleTheme}
+        onOpenSidePanel={handleOpenSidePanel}
       />
 
       <div style={{ padding: '8px 16px 0 16px' }}>
@@ -480,6 +538,7 @@ export const App: React.FC = () => {
           onToggleAllApprovals={handleToggleAllApprovals}
           onHighlightField={handleHighlightField}
           onOpenSettings={() => setActiveTab('settings')}
+          onClear={handleClear}
         />
       ) : (
         <SettingsTab settings={settings} onSaveSettings={handleSaveSettings} />
