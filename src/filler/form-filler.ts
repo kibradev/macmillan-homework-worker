@@ -42,7 +42,6 @@ export async function fillFormField(
 
   // 1. Multiple choice & True/False handling
   if (question.type === 'multiple_choice' || question.type === 'true_false' || (question.options && question.options.length > 0)) {
-    // Check letter options matching (e.g. AI answered "A", "B", "C", "D")
     let matchedOptionIndex = -1;
     if (/^[a-d]$/i.test(cleanAnswer) && question.options) {
       const letterCode = cleanAnswer.toUpperCase().charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
@@ -52,7 +51,6 @@ export async function fillFormField(
     }
 
     if (question.options && question.options.length > 0) {
-      // Find matching option by text, value, or index
       const matchedOpt =
         (matchedOptionIndex >= 0 ? question.options[matchedOptionIndex] : null) ||
         question.options.find(
@@ -65,7 +63,7 @@ export async function fillFormField(
 
       if (matchedOpt && matchedOpt.elementSelector) {
         const el = findDeepElement(doc, matchedOpt.elementSelector);
-        if (el && fillAnyElement(el, approvedAnswer)) {
+        if (el && (await fillAnyElement(doc, el, approvedAnswer))) {
           return { success: true };
         }
       }
@@ -80,18 +78,18 @@ export async function fillFormField(
 
       if (isMatch) {
         const el = findDeepElement(doc, field.selector);
-        if (el && fillAnyElement(el, approvedAnswer)) {
+        if (el && (await fillAnyElement(doc, el, approvedAnswer))) {
           return { success: true };
         }
       }
     }
   }
 
-  // 2. Direct field selector lookup (Inputs, Selects, Contenteditable)
+  // 2. Direct field selector lookup (Inputs, Selects, Contenteditable, Click-to-Edit Words)
   for (const field of question.fields) {
     const el = findDeepElement(doc, field.selector);
     if (el) {
-      const filled = fillAnyElement(el, approvedAnswer);
+      const filled = await fillAnyElement(doc, el, approvedAnswer);
       if (filled) return { success: true };
     }
   }
@@ -100,11 +98,11 @@ export async function fillFormField(
   if (question.metadata?.containerSelector) {
     const container = findDeepElement(doc, question.metadata.containerSelector);
     if (container) {
-      const innerInput = container.querySelector(
-        'input:not([type="hidden"]):not([type="submit"]), select, textarea, [contenteditable="true"], [role="textbox"]'
+      const innerTarget = container.querySelector(
+        'input:not([type="hidden"]):not([type="submit"]), select, textarea, [contenteditable="true"], [role="textbox"], [class*="word"], [class*="gap"], [class*="token"], [class*="clickable"]'
       ) as HTMLElement | null;
 
-      if (innerInput && fillAnyElement(innerInput, approvedAnswer)) {
+      if (innerTarget && (await fillAnyElement(doc, innerTarget, approvedAnswer))) {
         return { success: true };
       }
     }
@@ -114,7 +112,7 @@ export async function fillFormField(
   for (const field of question.fields) {
     if (field.name) {
       const elByName = doc.querySelector(`[name="${CSS.escape(field.name)}"]`) as HTMLElement | null;
-      if (elByName && fillAnyElement(elByName, approvedAnswer)) {
+      if (elByName && (await fillAnyElement(doc, elByName, approvedAnswer))) {
         return { success: true };
       }
     }
@@ -126,7 +124,7 @@ export async function fillFormField(
   };
 }
 
-export function fillAnyElement(el: HTMLElement, approvedAnswer: string): boolean {
+export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAnswer: string): Promise<boolean> {
   const safety = validateElementSafety(el);
   if (!safety.isSafe) return false;
 
@@ -155,7 +153,7 @@ export function fillAnyElement(el: HTMLElement, approvedAnswer: string): boolean
     return false;
   }
 
-  // 2. Text Input / Textarea
+  // 2. Direct Text Input / Textarea
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
     if (el.type === 'radio' || el.type === 'checkbox') {
       clickElement(el);
@@ -179,8 +177,43 @@ export function fillAnyElement(el: HTMLElement, approvedAnswer: string): boolean
     return true;
   }
 
-  // 4. Clickable choice button or chip
+  // 4. SPECIAL MACMILLAN CLICK-TO-EDIT GAP / ERROR CORRECTION
+  // Clicking the word element triggers an inline or popover input!
   clickElement(el);
+  await new Promise((r) => setTimeout(r, 90));
+
+  // Check if an input opened upon clicking the word
+  const openedInput =
+    (el.querySelector('input, textarea') as HTMLInputElement | null) ||
+    (el.parentElement?.querySelector('input, textarea') as HTMLInputElement | null) ||
+    (doc.activeElement instanceof HTMLInputElement || doc.activeElement instanceof HTMLTextAreaElement ? doc.activeElement : null) ||
+    (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null) ||
+    (doc.querySelector('input:focus, .popover input, .tooltip input, [class*="correction"] input, [class*="inline-edit"] input') as HTMLInputElement | null);
+
+  if (openedInput && (openedInput instanceof HTMLInputElement || openedInput instanceof HTMLTextAreaElement)) {
+    setNativeValue(openedInput, approvedAnswer);
+    flashHighlight(openedInput);
+
+    // Confirm inline input with Enter key and change event
+    openedInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+    openedInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+    openedInput.dispatchEvent(new Event('input', { bubbles: true }));
+    openedInput.dispatchEvent(new Event('change', { bubbles: true }));
+    openedInput.blur();
+
+    // Check if there is an OK / checkmark confirmation button next to the input
+    const okBtn = openedInput.parentElement?.querySelector(
+      'button[class*="ok"], button[class*="confirm"], button[class*="check"], button[class*="save"], button[type="button"]'
+    ) as HTMLElement | null;
+    if (okBtn) {
+      okBtn.click();
+    }
+
+    flashHighlight(el);
+    return true;
+  }
+
+  // If no input opened, this was a regular clickable choice/chip button
   flashHighlight(el);
   return true;
 }
@@ -188,6 +221,7 @@ export function fillAnyElement(el: HTMLElement, approvedAnswer: string): boolean
 function clickElement(el: HTMLElement) {
   el.focus();
   el.click();
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
