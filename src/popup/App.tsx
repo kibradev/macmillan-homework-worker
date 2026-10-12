@@ -4,6 +4,7 @@ import { ScannerTab } from './components/ScannerTab';
 import { SettingsTab } from './components/SettingsTab';
 import { BannerMessage, StatusBanner } from './components/StatusBanner';
 import { AnswerReviewItem } from '../types/answer';
+import { Question } from '../types/question';
 import { PlatformDetectionResult } from '../types/platform';
 import { loadSettings, saveSettings, UserSettings, getActiveProviderConfig } from '../storage/settings';
 import { loadTabHomeworkCache, saveTabHomeworkCache, clearTabHomeworkCache } from '../storage/session-cache';
@@ -166,6 +167,96 @@ export const App: React.FC = () => {
     }
   };
 
+  const performScan = async (): Promise<{
+    questions: Question[];
+    frameId?: number;
+  } | null> => {
+    const tabId = await getActiveTabId();
+    if (!tabId) return null;
+
+    const ready = await ensureContentScriptInjected(tabId);
+    if (!ready) return null;
+
+    let response: ScanQuestionsResponse | null = null;
+    let foundFrameId: number | undefined = undefined;
+
+    // 1. Try scanning top frame (frame 0)
+    try {
+      const topRes: ScanQuestionsResponse = await chrome.tabs.sendMessage(tabId, {
+        action: 'SCAN_QUESTIONS',
+      });
+      if (topRes && topRes.success && topRes.questions && topRes.questions.length > 0) {
+        response = topRes;
+        foundFrameId = 0;
+      }
+    } catch (topErr) {
+      console.warn('Top frame scan warning:', topErr);
+    }
+
+    // 2. If top frame had 0 questions, search all child iframes (Macmillan embeds activity in iframes)
+    if (!response || !response.questions || response.questions.length === 0) {
+      try {
+        const frameResults = await chrome.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          func: () => {
+            const inputs = document.querySelectorAll(
+              'input:not([type="hidden"]), select, textarea, [contenteditable="true"], [role="textbox"], [role="radio"], [class*="gap"], [class*="blank"], [class*="activity"]'
+            );
+            return {
+              inputsCount: inputs.length,
+              url: window.location.href,
+            };
+          },
+        });
+
+        for (const fr of frameResults) {
+          if (fr.frameId !== 0 && (fr.result?.inputsCount || 0) > 0) {
+            try {
+              // Ensure content script is ready in this sub-frame
+              await chrome.scripting
+                .executeScript({
+                  target: { tabId, frameIds: [fr.frameId] },
+                  files: ['content.js'],
+                })
+                .catch(() => {});
+
+              const frameRes: ScanQuestionsResponse = await chrome.tabs.sendMessage(
+                tabId,
+                { action: 'SCAN_QUESTIONS' },
+                { frameId: fr.frameId }
+              );
+
+              if (frameRes && frameRes.success && frameRes.questions && frameRes.questions.length > 0) {
+                response = frameRes;
+                foundFrameId = fr.frameId;
+                break;
+              }
+            } catch (subErr) {
+              console.warn('Sub-frame scan warning:', subErr);
+            }
+          }
+        }
+      } catch (frameErr) {
+        console.warn('Frame discovery error:', frameErr);
+      }
+    }
+
+    if (!response || !response.questions) {
+      return null;
+    }
+
+    setActiveFrameId(foundFrameId);
+
+    if (response.platform) {
+      setPlatform(response.platform);
+    }
+
+    return {
+      questions: response.questions,
+      frameId: foundFrameId,
+    };
+  };
+
   const handleScan = async () => {
     setIsScanning(true);
     setBanner(null);
@@ -180,99 +271,16 @@ export const App: React.FC = () => {
       return;
     }
 
-    const ready = await ensureContentScriptInjected(tabId);
-    if (!ready) {
-      setIsScanning(false);
-      setBanner({
-        type: 'error',
-        text: 'Unable to access page. Ensure the extension has permission for this URL.',
-      });
-      return;
-    }
-
     try {
-      let response: ScanQuestionsResponse | null = null;
-      let foundFrameId: number | undefined = undefined;
-
-      // 1. Try scanning top frame (frame 0)
-      try {
-        const topRes: ScanQuestionsResponse = await chrome.tabs.sendMessage(tabId, {
-          action: 'SCAN_QUESTIONS',
-        });
-        if (topRes && topRes.success && topRes.questions && topRes.questions.length > 0) {
-          response = topRes;
-          foundFrameId = 0;
-        }
-      } catch (topErr) {
-        console.warn('Top frame scan warning:', topErr);
-      }
-
-      // 2. If top frame had 0 questions, search all child iframes (Macmillan embeds activity in iframes)
-      if (!response || !response.questions || response.questions.length === 0) {
-        try {
-          const frameResults = await chrome.scripting.executeScript({
-            target: { tabId, allFrames: true },
-            func: () => {
-              const inputs = document.querySelectorAll(
-                'input:not([type="hidden"]), select, textarea, [contenteditable="true"], [role="textbox"], [role="radio"], [class*="gap"], [class*="blank"], [class*="activity"]'
-              );
-              return {
-                inputsCount: inputs.length,
-                url: window.location.href,
-              };
-            },
-          });
-
-          for (const fr of frameResults) {
-            if (fr.frameId !== 0 && (fr.result?.inputsCount || 0) > 0) {
-              try {
-                // Ensure content script is ready in this sub-frame
-                await chrome.scripting
-                  .executeScript({
-                    target: { tabId, frameIds: [fr.frameId] },
-                    files: ['content.js'],
-                  })
-                  .catch(() => {});
-
-                const frameRes: ScanQuestionsResponse = await chrome.tabs.sendMessage(
-                  tabId,
-                  { action: 'SCAN_QUESTIONS' },
-                  { frameId: fr.frameId }
-                );
-
-                if (frameRes && frameRes.success && frameRes.questions && frameRes.questions.length > 0) {
-                  response = frameRes;
-                  foundFrameId = fr.frameId;
-                  break;
-                }
-              } catch (subErr) {
-                console.warn('Sub-frame scan warning:', subErr);
-              }
-            }
-          }
-        } catch (frameErr) {
-          console.warn('Frame discovery error:', frameErr);
-        }
-      }
-
-      if (!response || !response.questions) {
-        throw new Error(response?.error || 'Question scan failed.');
-      }
-
-      setActiveFrameId(foundFrameId);
-
-      if (response.platform) {
-        setPlatform(response.platform);
-      }
-
-      if (response.questions.length === 0) {
+      const scanRes = await performScan();
+      if (!scanRes || scanRes.questions.length === 0) {
         setItems([]);
         setBanner({
           type: 'info',
-          text: 'No homework questions detected on this page. If this is an iframe or dynamic view, please wait for it to fully load.',
+          text: 'No homework questions detected on this page. If this is an iframe, please wait for it to load.',
         });
       } else {
-        const reviewItems: AnswerReviewItem[] = response.questions.map((q) => ({
+        const reviewItems: AnswerReviewItem[] = scanRes.questions.map((q) => ({
           question: q,
           userEditedAnswer: '',
           approved: false,
@@ -282,7 +290,7 @@ export const App: React.FC = () => {
         setBanner({
           type: 'success',
           text: `Detected ${reviewItems.length} question${reviewItems.length === 1 ? '' : 's'}${
-            foundFrameId !== 0 && foundFrameId !== undefined ? ' (inside activity frame)' : ''
+            scanRes.frameId !== 0 && scanRes.frameId !== undefined ? ' (inside activity frame)' : ''
           }.`,
         });
       }
@@ -293,6 +301,96 @@ export const App: React.FC = () => {
       });
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  const handleAutoPilot = async () => {
+    if (!settings) return;
+    const providerConfig = getActiveProviderConfig(settings);
+
+    if (!providerConfig.apiKey.trim()) {
+      setBanner({
+        type: 'warning',
+        text: `Önce Ayarlar (AI & Settings) sekmesinden ${settings.selectedProvider} API anahtarınızı girin.`,
+      });
+      setActiveTab('settings');
+      return;
+    }
+
+    setIsScanning(true);
+    setBanner({
+      type: 'info',
+      text: '1/3 Sayfa taranıyor...',
+    });
+
+    try {
+      let questionsToSolve = items.map((i) => i.question);
+      let currentReviewItems = items;
+
+      if (questionsToSolve.length === 0) {
+        const scanRes = await performScan();
+        if (!scanRes || scanRes.questions.length === 0) {
+          setIsScanning(false);
+          setBanner({
+            type: 'warning',
+            text: 'Sayfada çözülecek soru tespit edilemedi. Lütfen ödevin tam yüklendiğinden emin olun.',
+          });
+          return;
+        }
+        questionsToSolve = scanRes.questions;
+        currentReviewItems = scanRes.questions.map((q) => ({
+          question: q,
+          userEditedAnswer: '',
+          approved: true,
+          fillStatus: 'idle',
+        }));
+        setItems(currentReviewItems);
+      }
+      setIsScanning(false);
+
+      // 2. Generate with AI
+      setIsGenerating(true);
+      setBanner({
+        type: 'info',
+        text: `2/3 Yapay zeka soruları çözüyor (${questionsToSolve.length} soru)...`,
+      });
+
+      const aiProvider = getAIProvider(providerConfig.providerId);
+      const result = await aiProvider.generateAnswers(
+        questionsToSolve,
+        providerConfig.apiKey,
+        providerConfig.modelId
+      );
+
+      const solvedItems: AnswerReviewItem[] = currentReviewItems.map((item) => {
+        const suggestion = result.suggestions.find((s) => s.questionId === item.question.id);
+        const suggestedAnswer = suggestion?.suggestedAnswer || '';
+        return {
+          ...item,
+          suggestion,
+          userEditedAnswer: suggestedAnswer,
+          approved: Boolean(suggestedAnswer),
+          fillStatus: 'idle',
+        };
+      });
+
+      setItems(solvedItems);
+      setIsGenerating(false);
+
+      // 3. Auto-fill into the webpage!
+      setBanner({
+        type: 'info',
+        text: `3/3 Çözüldü! Cevaplar sayfadaki alanlara otomatik işaretleniyor...`,
+      });
+
+      await fillItemsList(solvedItems);
+    } catch (err) {
+      setIsScanning(false);
+      setIsGenerating(false);
+      setBanner({
+        type: 'error',
+        text: `Auto-Pilot hatası: ${(err as Error).message}`,
+      });
     }
   };
 
@@ -554,6 +652,7 @@ export const App: React.FC = () => {
           onHighlightField={handleHighlightField}
           onOpenSettings={() => setActiveTab('settings')}
           onClear={handleClear}
+          onAutoPilot={handleAutoPilot}
         />
       ) : (
         <SettingsTab settings={settings} onSaveSettings={handleSaveSettings} />

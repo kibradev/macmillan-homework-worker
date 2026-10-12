@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowDownToLine, CheckCheck, Loader2, Play, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowDownToLine, CheckCheck, Loader2, Play, RefreshCw, Sparkles, Zap } from 'lucide-react';
 import { AnswerReviewItem } from '../../types/answer';
 import { QuestionCard } from './QuestionCard';
 
@@ -19,6 +19,7 @@ interface ScannerTabProps {
   onHighlightField: (selector: string) => void;
   onOpenSettings: () => void;
   onClear?: () => void;
+  onAutoPilot: () => void;
 }
 
 export const ScannerTab: React.FC<ScannerTabProps> = ({
@@ -37,6 +38,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
   onHighlightField,
   onOpenSettings,
   onClear,
+  onAutoPilot,
 }) => {
   const approvedCount = items.filter((i) => i.approved).length;
   const suggestionsCount = items.filter((i) => !!i.suggestion).length;
@@ -44,21 +46,57 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
 
   return (
     <div className="tab-content">
-      {/* Top action row */}
+      {/* 1-Click Auto-Pilot Button */}
+      <button
+        className="btn btn-primary"
+        style={{
+          width: '100%',
+          padding: '11px 16px',
+          fontWeight: 700,
+          letterSpacing: '0.3px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          fontSize: '13px',
+        }}
+        onClick={onAutoPilot}
+        disabled={isScanning || isGenerating || isFilling}
+      >
+        {isScanning ? (
+          <>
+            <Loader2 size={15} className="spin" /> 1/3 Sayfa Taranıyor...
+          </>
+        ) : isGenerating ? (
+          <>
+            <Loader2 size={15} className="spin" /> 2/3 AI Çözüyor...
+          </>
+        ) : isFilling ? (
+          <>
+            <Loader2 size={15} className="spin" /> 3/3 Sayfaya İşaretleniyor...
+          </>
+        ) : (
+          <>
+            <Zap size={15} /> ⚡ Auto-Pilot (Tara, Çöz & İşaretle)
+          </>
+        )}
+      </button>
+
+      {/* Secondary granular action row */}
       <div style={{ display: 'flex', gap: '8px' }}>
         <button
-          className="btn btn-primary"
+          className="btn btn-secondary"
           style={{ flex: 1 }}
           onClick={onScan}
           disabled={isScanning || isGenerating || isFilling}
         >
           {isScanning ? (
             <>
-              <Loader2 size={15} className="spin" /> Scanning DOM...
+              <Loader2 size={15} className="spin" /> Taranıyor...
             </>
           ) : (
             <>
-              <RefreshCw size={15} /> Scan Homework
+              <RefreshCw size={14} /> Scan Only
             </>
           )}
         </button>
