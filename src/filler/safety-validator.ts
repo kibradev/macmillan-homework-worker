@@ -40,11 +40,19 @@ export function validateElementSafety(element: Element | null): SafetyCheckResul
     };
   }
 
-  // Ensure element is actually a writable input, select, or radio/checkbox
-  if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(tagName) && !element.hasAttribute('contenteditable')) {
+  // Ensure element is not an assignment submission element.
+  // Allow inputs, selects, textareas, contenteditables, and educational interaction elements (choice chips, radios, gaps)
+  const isFormTag = ['INPUT', 'SELECT', 'TEXTAREA'].includes(tagName);
+  const isEditable = element.hasAttribute('contenteditable') || (element as any).isContentEditable;
+  const role = element.getAttribute('role') || '';
+  const isInteractiveRole = ['textbox', 'radio', 'checkbox', 'button', 'option'].includes(role);
+  const className = String((element as any).className || '').toLowerCase();
+  const isActivityElement = /gap|blank|choice|option|answer|item|input|drop/i.test(className);
+
+  if (!isFormTag && !isEditable && !isInteractiveRole && !isActivityElement) {
     return {
       isSafe: false,
-      reason: `Element of type <${tagName}> is not an authorized editable form field.`,
+      reason: `Element <${tagName}> is not an interactive exercise field.`,
     };
   }
 
