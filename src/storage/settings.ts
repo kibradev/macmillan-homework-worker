@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     openai: 'gpt-4o-mini',
     anthropic: 'claude-3-5-haiku-latest',
   },
-  saveKeyToSessionOnly: true,
+  saveKeyToSessionOnly: false,
   theme: 'dark',
   confidenceThreshold: 0.7,
   autoFillOnGenerate: true,
@@ -42,13 +42,13 @@ export async function loadSettings(): Promise<UserSettings> {
 
   try {
     if (hasChromeStorage()) {
-      // 1. Load general settings from chrome.storage.local
+      // 1. Load general settings & persistent keys from chrome.storage.local
       const localResult = await chrome.storage.local.get([STORAGE_KEY]);
       if (localResult[STORAGE_KEY]) {
         settings = { ...settings, ...localResult[STORAGE_KEY] };
       }
 
-      // 2. If session-only is preferred, load API keys from chrome.storage.session
+      // 2. Also check session storage if any session-override keys exist
       if (chrome.storage.session) {
         const sessionResult = await chrome.storage.session.get([SESSION_KEYS_KEY]);
         if (sessionResult[SESSION_KEYS_KEY]) {
@@ -87,21 +87,23 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
   try {
     if (hasChromeStorage()) {
       if (saveKeyToSessionOnly) {
-        // Save general settings without API keys to local storage
+        // Session-only: clear from local, save to session
         await chrome.storage.local.set({
           [STORAGE_KEY]: { ...restSettings, saveKeyToSessionOnly: true, apiKeys: { gemini: '', openai: '', anthropic: '' } },
         });
-
-        // Save keys only in session storage (cleared when browser session closes)
         if (chrome.storage.session) {
           await chrome.storage.session.set({
             [SESSION_KEYS_KEY]: apiKeys,
           });
         }
       } else {
-        // Persistent storage
+        // PERMANENT STORAGE: Save keys directly in chrome.storage.local (never lost on reload)
         await chrome.storage.local.set({
-          [STORAGE_KEY]: settings,
+          [STORAGE_KEY]: {
+            ...settings,
+            saveKeyToSessionOnly: false,
+            apiKeys,
+          },
         });
         if (chrome.storage.session) {
           await chrome.storage.session.remove([SESSION_KEYS_KEY]);

@@ -291,7 +291,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
             }
           />
           <span style={{ fontSize: '11px' }}>
-            Store API key in session-only storage (cleared on browser exit)
+            {localSettings.saveKeyToSessionOnly
+              ? 'Geçici mod (Reload yapınca silinir)'
+              : 'Kalıcı mod: API anahtarı reload yapsan da ASLA silinmez (Önerilen)'}
           </span>
         </label>
       </div>
