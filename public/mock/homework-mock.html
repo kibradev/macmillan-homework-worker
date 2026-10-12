@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyPilot - Language Hub Mock Exercise</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #16a34a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    .header-bar {
+      background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+      color: white;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+    }
+
+    .header-bar h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .header-bar p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .notice {
+      background: #eff6ff;
+      border-left: 4px solid var(--primary);
+      padding: 12px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 24px;
+      color: #1e40af;
+    }
+
+    .exercise-form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .question-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      transition: border-color 0.2s;
+    }
+
+    .question-card:hover {
+      border-color: #cbd5e1;
+    }
+
+    .question-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .q-number {
+      background: #e2e8f0;
+      color: #334155;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .radio-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #fdfdfd;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .radio-label:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+
+    .radio-label input[type="radio"] {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+    }
+
+    .blank-sentence {
+      font-size: 15px;
+      line-height: 2;
+    }
+
+    .text-input {
+      padding: 6px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .text-input:focus {
+      border-color: var(--primary);
+    }
+
+    .dropdown-select {
+      padding: 8px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .dropdown-select:focus {
+      border-color: var(--primary);
+    }
+
+    .textarea-input {
+      width: 100%;
+      min-height: 80px;
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+    }
+
+    .textarea-input:focus {
+      border-color: var(--primary);
+    }
+
+    .submit-section {
+      display: flex;
+      justify-content: flex-end;
+      padding: 16px 0;
+      gap: 12px;
+    }
+
+    .submit-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .submit-btn:hover {
+      background: #1d4ed8;
+    }
+
+    .test-feedback {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      font-size: 13px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-bar">
+      <h1>Unit 4: Advanced English Grammar & Usage</h1>
+      <p>Course: Macmillan Language Hub B2+ (Mock Interactive Assignment)</p>
+    </div>
+
+    <div class="notice">
+      💡 <strong>StudyPilot Test Page:</strong> Open the StudyPilot Chrome Extension popup to scan this homework, generate AI suggestions, review answers, and test automatic field filling.
+    </div>
+
+    <form class="exercise-form" id="homework-form" onsubmit="event.preventDefault(); showResult();">
+
+      <!-- Question 1: Multiple Choice -->
+      <div class="question-card" id="question-1">
+        <div class="question-title">
+          <span class="q-number">1</span>
+          Which sentence correctly uses the third conditional?
+        </div>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="q1_conditional" value="If I study hard, I will pass the exam." />
+            <span>If I study hard, I will pass the exam.</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="q1_conditional" value="If I had studied harder, I would have passed the exam." />
+            <span>If I had studied harder, I would have passed the exam.</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="q1_conditional" value="If I studied harder, I would pass the exam." />
+            <span>If I studied harder, I would pass the exam.</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="q1_conditional" value="If I have studied, I had passed the exam." />
+            <span>If I have studied, I had passed the exam.</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Question 2: Fill in the blank -->
+      <div class="question-card" id="question-2">
+        <div class="question-title">
+          <span class="q-number">2</span>
+          Fill in the blank with the correct past tense form of the verb in parentheses:
+        </div>
+        <p class="blank-sentence">
+          Yesterday afternoon, she 
+          <input
+            type="text"
+            id="q2_input"
+            name="q2_verb"
+            class="text-input"
+            placeholder="enter verb"
+            style="width: 140px; text-align: center;"
+          />
+          (catch) the express train to Manchester after her meeting.
+        </p>
+      </div>
+
+      <!-- Question 3: Dropdown selection -->
+      <div class="question-card" id="question-3">
+        <div class="question-title">
+          <span class="q-number">3</span>
+          Select the correct dependent preposition:
+        </div>
+        <p class="blank-sentence">
+          The research team succeeded 
+          <select id="q3_select" name="q3_preposition" class="dropdown-select">
+            <option value="">-- Select preposition --</option>
+            <option value="in">in</option>
+            <option value="at">at</option>
+            <option value="for">for</option>
+            <option value="with">with</option>
+          </select>
+          publishing their landmark study on renewable energy.
+        </p>
+      </div>
+
+      <!-- Question 4: True / False -->
+      <div class="question-card" id="question-4">
+        <div class="question-title">
+          <span class="q-number">4</span>
+          True or False: The adjective "unique" can be modified by the comparative adverb "more".
+        </div>
+        <div class="radio-group" style="flex-direction: row; gap: 16px;">
+          <label class="radio-label" style="flex: 1;">
+            <input type="radio" name="q4_tf" value="True" />
+            <span>True</span>
+          </label>
+          <label class="radio-label" style="flex: 1;">
+            <input type="radio" name="q4_tf" value="False" />
+            <span>False</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Question 5: Short Answer -->
+      <div class="question-card" id="question-5">
+        <div class="question-title">
+          <span class="q-number">5</span>
+          Complete the phrase: "Actions speak louder than ______."
+        </div>
+        <input
+          type="text"
+          id="q5_input"
+          name="q5_phrase"
+          class="text-input"
+          placeholder="Type answer here..."
+          style="width: 100%;"
+        />
+      </div>
+
+      <div class="submit-section">
+        <button type="submit" class="submit-btn">Check Homework Answers</button>
+      </div>
+
+      <div id="test-feedback" class="test-feedback"></div>
+    </form>
+  </div>
+
+  <script>
+    function showResult() {
+      const q1 = document.querySelector('input[name="q1_conditional"]:checked')?.value || 'Not answered';
+      const q2 = document.getElementById('q2_input').value || 'Not answered';
+      const q3 = document.getElementById('q3_select').value || 'Not answered';
+      const q4 = document.querySelector('input[name="q4_tf"]:checked')?.value || 'Not answered';
+      const q5 = document.getElementById('q5_input').value || 'Not answered';
+
+      const feedback = document.getElementById('test-feedback');
+      feedback.style.display = 'block';
+      feedback.innerHTML = `
+        <strong>Submitted Values Review:</strong><br/>
+        • Q1 (Multiple Choice): <code>${q1}</code><br/>
+        • Q2 (Fill blank): <code>${q2}</code><br/>
+        • Q3 (Dropdown): <code>${q3}</code><br/>
+        • Q4 (True/False): <code>${q4}</code><br/>
+        • Q5 (Short Answer): <code>${q5}</code>
+      `;
+      feedback.scrollIntoView({ behavior: 'smooth' });
+    }
+  </script>
+</body>
+</html>

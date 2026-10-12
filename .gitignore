@@ -1,0 +1,23 @@
+# Node dependencies
+node_modules/
+.npm/
+
+# Build artifacts
+dist/
+dist-ssr/
+*.local
+
+# Environment variables & keys
+.env
+.env.*
+*.env
+*.key
+*.pem
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
