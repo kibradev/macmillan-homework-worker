@@ -129,15 +129,52 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
       {/* Model Selector */}
       <div className="form-group">
         <label className="form-label">Model Selection</label>
-        <select className="form-select" value={currentModelId} onChange={handleModelChange}>
+        <select
+          className="form-select"
+          value={availableModels.some((m) => m.id === currentModelId) ? currentModelId : 'custom'}
+          onChange={(e) => {
+            if (e.target.value !== 'custom') {
+              handleModelChange(e);
+            } else {
+              setLocalSettings((prev) => ({
+                ...prev,
+                selectedModels: {
+                  ...prev.selectedModels,
+                  [prev.selectedProvider]: '',
+                },
+              }));
+            }
+          }}
+        >
           {availableModels.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name}
             </option>
           ))}
+          <option value="custom">Custom Model ID...</option>
         </select>
+        {!availableModels.some((m) => m.id === currentModelId) && (
+          <input
+            type="text"
+            className="form-input"
+            style={{ marginTop: '6px' }}
+            value={currentModelId}
+            onChange={(e) => {
+              const val = e.target.value;
+              setLocalSettings((prev) => ({
+                ...prev,
+                selectedModels: {
+                  ...prev.selectedModels,
+                  [prev.selectedProvider]: val,
+                },
+              }));
+            }}
+            placeholder="Enter custom model ID (e.g. gemini-2.5-flash-lite)"
+          />
+        )}
         <span className="form-hint">
-          {availableModels.find((m) => m.id === currentModelId)?.description}
+          {availableModels.find((m) => m.id === currentModelId)?.description ||
+            `Current model: ${currentModelId || 'None'}`}
         </span>
       </div>
 

@@ -10,14 +10,29 @@ export class GeminiProvider implements AIProvider {
   getAvailableModels(): AIModelInfo[] {
     return [
       {
-        id: 'gemini-1.5-flash',
-        name: 'Gemini 1.5 Flash (Fast & Recommended)',
-        description: 'High speed, lightweight, ideal for instant homework suggestions.',
+        id: 'gemini-2.5-flash-lite',
+        name: 'Gemini 2.5 Flash Lite (Recommended)',
+        description: 'Ultra fast, cost-efficient, latest lightweight model for homework analysis.',
+      },
+      {
+        id: 'gemini-2.0-flash-lite',
+        name: 'Gemini 2.0 Flash Lite',
+        description: 'High-speed compact model with low latency.',
+      },
+      {
+        id: 'gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash',
+        description: 'Next-gen high speed flagship model.',
       },
       {
         id: 'gemini-2.0-flash',
         name: 'Gemini 2.0 Flash',
         description: 'Next-gen fast model with improved reasoning capabilities.',
+      },
+      {
+        id: 'gemini-1.5-flash',
+        name: 'Gemini 1.5 Flash',
+        description: 'Fast, lightweight homework suggestions.',
       },
       {
         id: 'gemini-1.5-pro',
@@ -28,7 +43,7 @@ export class GeminiProvider implements AIProvider {
   }
 
   getDefaultModelId(): string {
-    return 'gemini-1.5-flash';
+    return 'gemini-2.5-flash-lite';
   }
 
   async testConnection(apiKey: string, modelId: string): Promise<ConnectionTestResult> {

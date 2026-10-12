@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     anthropic: '',
   },
   selectedModels: {
-    gemini: 'gemini-1.5-flash',
+    gemini: 'gemini-2.5-flash-lite',
     openai: 'gpt-4o-mini',
     anthropic: 'claude-3-5-haiku-latest',
   },
@@ -53,6 +53,11 @@ export async function loadSettings(): Promise<UserSettings> {
             ...sessionResult[SESSION_KEYS_KEY],
           };
         }
+      }
+
+      // Ensure model defaults to 2.5-flash-lite
+      if (!settings.selectedModels.gemini || settings.selectedModels.gemini === 'gemini-1.5-flash') {
+        settings.selectedModels.gemini = 'gemini-2.5-flash-lite';
       }
     } else {
       // Dev mode fallback
