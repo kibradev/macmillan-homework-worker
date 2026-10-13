@@ -332,20 +332,13 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
         }
 
         // 3. Trigger Macmillan RCF customRcfSelectMenu refresh & jQuery triggers
-        const win = docOwner.defaultView as any;
-        if (win && win.$) {
-          try {
-            const $select = win.$(selectEl);
-            const customMenu = $select.data('customRcfSelectMenu');
-            if (customMenu && typeof customMenu.refresh === 'function') {
-              console.log('[StudyPilot] Calling Macmillan customRcfSelectMenu.refresh()');
-              customMenu.refresh();
-            } else if (typeof $select.selectmenu === 'function') {
-              try { $select.selectmenu('refresh'); } catch {}
-            }
-            $select.trigger('change');
-          } catch (jqErr) {
-            console.warn('[StudyPilot] customRcfSelectMenu error:', jqErr);
+        // jQuery lives in the page's MAIN world; the content script is isolated, so ask the background to run it there.
+        if (selectEl.id) {
+          const synced = await chrome.runtime
+            .sendMessage({ action: 'SYNC_RCF_SELECT', selectId: selectEl.id })
+            .catch(() => null);
+          if (!synced?.success) {
+            console.warn('[StudyPilot] MAIN world RCF select sync failed:', synced);
           }
         }
       } catch (uiErr) {

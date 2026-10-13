@@ -540,7 +540,7 @@ export const App: React.FC = () => {
               func: (qIndex: number, ans: string, qName?: string) => {
                 const doc = document;
                 const target =
-                  (qName ? doc.querySelector(`[name="${qName}"], #${qName}, [data-rcfid="${qName}"]`) : null) ||
+                  (qName ? doc.querySelector(`[name="${CSS.escape(qName)}"], #${CSS.escape(qName)}, [data-rcfid="${CSS.escape(qName)}"]`) : null) ||
                   doc.querySelector(`#typein${qIndex}, [name="typein${qIndex}"], [data-rcfid="typein_${qIndex}"]`) ||
                   doc.querySelectorAll('input.text, input.markedTextInput, input[name*="typein"]')[qIndex - 1];
 

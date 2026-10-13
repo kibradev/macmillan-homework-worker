@@ -5,6 +5,9 @@ import { flashHighlight } from '../filler/form-filler';
 // Signal script presence
 console.log('[StudyPilot] Content script initialized on:', window.location.href);
 
+const w = window as unknown as { __studypilotLoaded?: boolean };
+if (!w.__studypilotLoaded) {
+w.__studypilotLoaded = true;
 chrome.runtime.onMessage.addListener((message: ExtensionRequestMessage, _sender, sendResponse) => {
   const handleMessage = async () => {
     switch (message.action) {
@@ -59,3 +62,4 @@ chrome.runtime.onMessage.addListener((message: ExtensionRequestMessage, _sender,
 
   return true; // Keep message channel open for async response
 });
+}

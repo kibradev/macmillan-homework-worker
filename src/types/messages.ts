@@ -6,7 +6,8 @@ export type ActionType =
   | 'SCAN_QUESTIONS'
   | 'FILL_APPROVED_ANSWER'
   | 'HIGHLIGHT_FIELD'
-  | 'PING_CONTENT_SCRIPT';
+  | 'PING_CONTENT_SCRIPT'
+  | 'SYNC_RCF_SELECT';
 
 export interface BaseMessage {
   action: ActionType;
@@ -59,4 +60,10 @@ export interface FillApprovedAnswerResponse {
   success: boolean;
   filled: boolean;
   error?: string;
+}
+
+/** Content script -> background: run Macmillan's customRcfSelectMenu.refresh() in the page's MAIN world. */
+export interface SyncRcfSelectMessage extends BaseMessage {
+  action: 'SYNC_RCF_SELECT';
+  selectId: string;
 }
