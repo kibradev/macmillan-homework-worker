@@ -411,10 +411,16 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
       const allWords = Array.from(wordBox.querySelectorAll('li, .dragItem, .draggable, [data-rcfid*="drag"], span, div'))
         .filter((w) => w.textContent && w.textContent.trim().length > 1 && !w.classList.contains('count')) as HTMLElement[];
       
-      const matchedWordEl = allWords.find((w) => {
-        const wt = w.textContent?.trim().toLowerCase() || '';
-        return wt === cleanTarget || (cleanTarget.length > 2 && (wt.includes(cleanTarget) || cleanTarget.includes(wt)));
-      });
+      // Prefer an exact match on real word-bank items; fuzzy matching is only a fallback
+      // (otherwise "look" could pick "looks").
+      const dragItems = allWords.filter((w) => w.classList.contains('dragItem'));
+      const matchedWordEl =
+        dragItems.find((w) => (w.textContent?.trim().toLowerCase() || '') === cleanTarget) ||
+        allWords.find((w) => (w.textContent?.trim().toLowerCase() || '') === cleanTarget) ||
+        allWords.find((w) => {
+          const wt = w.textContent?.trim().toLowerCase() || '';
+          return cleanTarget.length > 2 && (wt.includes(cleanTarget) || cleanTarget.includes(wt));
+        });
 
       if (matchedWordEl) {
         console.log('[StudyPilot] Found matching word in wordBox, performing drag & drop simulation:', matchedWordEl);

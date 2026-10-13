@@ -445,12 +445,42 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     for (const gapEl of droppableGaps) {
       const parentSentence = (gapEl.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || gapEl.parentElement || gapEl;
       const clone = parentSentence.cloneNode(true) as HTMLElement;
+      // When one sentence holds several gaps, number them so each question is distinguishable
+      const gapsInSentence = clone.querySelectorAll('[data-rcfid^="complexDroppable_"]');
+      const isMultiGap = gapsInSentence.length > 1;
+      const currentGapId = gapEl.getAttribute('data-rcfid');
+      if (isMultiGap) {
+        gapsInSentence.forEach((g) => {
+          const gapNo = (g.getAttribute('data-rcfid') || '').replace('complexDroppable_', '');
+          g.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNo}] `));
+        });
+      }
       clone.querySelectorAll('.dragTarget, .clickAndStickable, .complexDroppable, .wordBox, button, [style*="display: none"]').forEach((n) => {
         const placeholder = clone.ownerDocument.createTextNode(' [_____] ');
         n.replaceWith(placeholder);
       });
       let promptText = cleanText(clone.textContent) || `Gap #${dIndex}`;
       promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+      if (isMultiGap && currentGapId) {
+        promptText += ` (Answer ONLY for [BLANK ${currentGapId.replace('complexDroppable_', '')}])`;
+      }
+
+      // Whole passage (e.g. the full dialogue) as context, with every gap numbered
+      let passageContext: string | undefined;
+      const passage = gapEl.closest('.mm_blockText, .mm_interactive') as HTMLElement | null;
+      if (passage && passage !== parentSentence) {
+        const passageClone = passage.cloneNode(true) as HTMLElement;
+        passageClone.querySelectorAll('.wordBox, button').forEach((n) => n.remove());
+        passageClone.querySelectorAll('[data-rcfid^="complexDroppable_"]').forEach((g) => {
+          const gapNo = (g.getAttribute('data-rcfid') || '').replace('complexDroppable_', '');
+          g.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNo}] `));
+        });
+        passageContext = cleanText(passageClone.textContent) || undefined;
+      }
+      const singleUse = !!wordBoxEl?.querySelector('[data-restrictcount="1"]');
+      const contextText = [passageContext, singleUse ? '[Note: each word in the word bank can be used only once.]' : '']
+        .filter(Boolean)
+        .join('\n\n') || undefined;
 
       const fieldRef: FormFieldRef = {
         id: `field_drag_${dIndex}`,
@@ -465,6 +495,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
         index: dIndex,
         type: 'dropdown',
         promptText,
+        contextText,
         options: wordBankOptions.length > 0 ? wordBankOptions : undefined,
         fields: [fieldRef],
         metadata: {
