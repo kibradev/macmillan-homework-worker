@@ -7,20 +7,29 @@ Your goal is to solve academic exercises accurately and explain the reasoning st
 RULES:
 1. Always analyze the question prompt, context, question type, and available options carefully.
 2. For multiple choice or dropdown questions, the suggestion must exactly match one of the available options or option values.
-3. For fill-in-the-blank questions, provide the exact word or phrase needed with correct spelling, capitalization, and grammar.
-4. For true/false questions, output "True" or "False".
-5. Return your response as a valid JSON object strictly matching this schema:
+3. For fill-in-the-blank or sentence error correction questions:
+   - Identify the single grammatical/spelling/vocabulary error in the sentence.
+   - Return ONLY the single corrected word or short phrase that should replace the incorrect word.
+   - NEVER return the full sentence.
+   - Example: For sentence "I am not liking social networking sites." -> Corrected word is "don't like" (or "do not like").
+   - Example: For sentence "I can see you check your phone again." -> Corrected word is "checking".
+   - Example: For sentence "I get worried about how much time I spend online." -> If the error is "get", return "am getting".
+4. For listening comprehension exercises:
+   - When an audio transcript or tapescript is provided in the question context, read it thoroughly to find the exact spoken facts and answers.
+   - If no transcript is provided, use all available contextual cues, grammar, and vocabulary clues in the prompt and surrounding sentence to deduce the most accurate answer.
+5. For true/false questions, output "True" or "False".
+6. Return your response as a valid JSON object strictly matching this schema:
 {
   "suggestions": [
     {
       "questionId": "string (matching the input question id)",
-      "suggestedAnswer": "string (the exact answer to fill)",
+      "suggestedAnswer": "string (ONLY the single corrected word or option to fill, NOT full sentence)",
       "confidence": number (float between 0.0 and 1.0),
       "explanation": "string (concise 1-2 sentence explanation of why this answer is correct)"
     }
   ]
 }
-6. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
+7. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
 
 export function buildQuestionsPrompt(questions: Question[]): string {
   const formattedQuestions = questions.map((q) => {

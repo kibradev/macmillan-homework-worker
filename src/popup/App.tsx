@@ -501,16 +501,70 @@ export const App: React.FC = () => {
       );
 
       try {
-        const sendOpts = activeFrameId !== undefined ? { frameId: activeFrameId } : {};
-        const response = (await chrome.tabs.sendMessage(
-          tabId,
-          {
-            action: 'FILL_APPROVED_ANSWER',
-            question: item.question,
-            answer: item.userEditedAnswer,
-          },
-          sendOpts
-        )) as FillApprovedAnswerResponse;
+        let response: FillApprovedAnswerResponse | null = null;
+
+        // Try primary targeted frame first
+        if (activeFrameId !== undefined) {
+          try {
+            response = (await chrome.tabs.sendMessage(
+              tabId,
+              {
+                action: 'FILL_APPROVED_ANSWER',
+                question: item.question,
+                answer: item.userEditedAnswer,
+              },
+              { frameId: activeFrameId }
+            )) as FillApprovedAnswerResponse;
+          } catch {}
+        }
+
+        // If not successful, try top frame (frame 0)
+        if (!response || !response.success) {
+          try {
+            response = (await chrome.tabs.sendMessage(
+              tabId,
+              {
+                action: 'FILL_APPROVED_ANSWER',
+                question: item.question,
+                answer: item.userEditedAnswer,
+              }
+            )) as FillApprovedAnswerResponse;
+          } catch {}
+        }
+
+        // Direct DOM execution fallback for iframe inputs (guaranteed fallback)
+        if (!response || !response.success) {
+          try {
+            const execResults = await chrome.scripting.executeScript({
+              target: { tabId, allFrames: true },
+              func: (qIndex: number, ans: string, qName?: string) => {
+                const doc = document;
+                const target =
+                  (qName ? doc.querySelector(`[name="${qName}"], #${qName}, [data-rcfid="${qName}"]`) : null) ||
+                  doc.querySelector(`#typein${qIndex}, [name="typein${qIndex}"], [data-rcfid="typein_${qIndex}"]`) ||
+                  doc.querySelectorAll('input.text, input.markedTextInput, input[name*="typein"]')[qIndex - 1];
+
+                if (target && target instanceof HTMLInputElement) {
+                  target.focus();
+                  target.value = ans;
+                  target.setAttribute('value', ans);
+                  target.dispatchEvent(new Event('input', { bubbles: true }));
+                  target.dispatchEvent(new Event('change', { bubbles: true }));
+                  target.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                  return true;
+                }
+                return false;
+              },
+              args: [item.question.index, item.userEditedAnswer, item.question.fields[0]?.name],
+            });
+
+            if (execResults.some((r) => r.result === true)) {
+              response = { success: true, filled: true };
+            }
+          } catch (execErr) {
+            console.warn('Script execution fallback failed:', execErr);
+          }
+        }
 
         if (response && response.success) {
           successCount++;

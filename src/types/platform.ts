@@ -17,5 +17,5 @@ export interface PlatformAdapter {
   isPlatformPage(url: string, doc: Document): boolean;
   detectExercise(doc: Document): boolean;
   extractQuestions(doc: Document): Promise<Question[]>;
-  fillAnswer(doc: Document, question: Question, answer: string): Promise<boolean>;
+  fillAnswer(doc: Document, question: Question, answer: string): Promise<{ success: boolean; error?: string }>;
 }

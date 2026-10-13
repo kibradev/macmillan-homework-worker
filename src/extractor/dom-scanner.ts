@@ -2,17 +2,21 @@ import { AnswerOption, FormFieldRef, Question } from '../types/question';
 import { classifyQuestionType } from './question-classifier';
 
 export function getUniqueCssSelector(el: Element): string {
+  // 1. Prioritize Macmillan data-rcfid (most stable and unique attribute in Macmillan RCF)
+  const rcfid = el.getAttribute('data-rcfid');
+  if (rcfid) {
+    return `[data-rcfid="${CSS.escape(rcfid)}"]`;
+  }
+
+  // 2. Element ID (if valid and not containing unescaped raw spaces)
   if (el.id) {
     return `#${CSS.escape(el.id)}`;
   }
 
-  // Check unique name attribute for inputs
+  // 3. Unique name attribute for inputs
   const name = el.getAttribute('name');
   if (name && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) {
-    const matching = document.querySelectorAll(`${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`);
-    if (matching.length === 1) {
-      return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
-    }
+    return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
   }
 
   const parts: string[] = [];
@@ -20,7 +24,12 @@ export function getUniqueCssSelector(el: Element): string {
 
   while (curr && curr.nodeType === Node.ELEMENT_NODE) {
     let selector = curr.nodeName.toLowerCase();
-    if (curr.id) {
+    const currRcfid = curr.getAttribute('data-rcfid');
+    if (currRcfid) {
+      selector = `[data-rcfid="${CSS.escape(currRcfid)}"]`;
+      parts.unshift(selector);
+      break;
+    } else if (curr.id) {
       selector = `#${CSS.escape(curr.id)}`;
       parts.unshift(selector);
       break;
@@ -43,7 +52,11 @@ export function getUniqueCssSelector(el: Element): string {
 
 export function cleanText(text: string | null | undefined): string {
   if (!text) return '';
-  return text.replace(/\s+/g, ' ').trim();
+  return text
+    .replace(/Ok\s*Cancel/gi, ' ')
+    .replace(/OkCancel/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function findLabelForElement(inputEl: HTMLElement): string {
@@ -117,10 +130,92 @@ export function queryAllDeep(root: Document | Element | ShadowRoot, selector: st
   return Array.from(new Set(results));
 }
 
+export function findListeningData(doc: Document | Element): { isListening: boolean; audioUrl?: string; transcript?: string } {
+  // 1. Search for audio elements or sources across all common players & Macmillan RCF audio player tags
+  const audioEl = doc.querySelector(
+    'audio, [data-audio-src], [data-audio], [class*="audio-player"], [class*="audioPlayer"], .audioInterface, .player, [data-player-type*="audio"], [id*="audio"]'
+  ) as HTMLElement | null;
+
+  let audioUrl: string | undefined;
+  if (audioEl) {
+    audioUrl = (audioEl as HTMLAudioElement).src ||
+               audioEl.getAttribute('data-audio-src') ||
+               audioEl.getAttribute('data-audio') ||
+               audioEl.getAttribute('data-src') ||
+               audioEl.querySelector('source')?.getAttribute('src') ||
+               undefined;
+  }
+
+  // 2. Search for transcripts / tapescripts (Macmillan often keeps tapescript in hidden tabs, modals, accordions, or data attributes)
+  const transcriptSelectors = [
+    '.scriptScroller',
+    '.script',
+    '.audioScript',
+    '.audioScriptButton',
+    '.tapescript',
+    '.transcript',
+    '[class*="scriptScroller"]',
+    '[class*="tapescript"]',
+    '[class*="transcript"]',
+    '[data-transcript]',
+    '.audio-script',
+    '[class*="audioScript"]',
+    '.script-content',
+    '#tapescriptModal',
+    '.tapescript-content',
+    '.transcript-content',
+    '.audio-transcript',
+    '[id*="tapescript"]',
+    '[id*="transcript"]',
+  ];
+  let transcript: string | undefined;
+  for (const sel of transcriptSelectors) {
+    const el = doc.querySelector(sel) as HTMLElement | null;
+    if (el && el.textContent && el.textContent.trim().length > 15) {
+      transcript = cleanText(el.textContent);
+      break;
+    }
+  }
+
+  const isListening = Boolean(
+    audioUrl ||
+    transcript ||
+    doc.querySelector(
+      '[class*="listening"], [data-activity-type*="listening"], [class*="audioInterface"], .audioControls, .track-info, [data-type*="audio"]'
+    )
+  );
+  return { isListening, audioUrl, transcript };
+}
+
+export function findGlossaryData(doc: Document | Element): string | undefined {
+  const glossarySelectors = [
+    '.collapsibleContainer',
+    '.glossary',
+    '[class*="glossary"]',
+    '[data-glossary]',
+    '.vocabulary-box',
+    '.word-list',
+    '.help-box',
+    '.reference-panel',
+  ];
+
+  for (const sel of glossarySelectors) {
+    const el = doc.querySelector(sel) as HTMLElement | null;
+    if (el && el.textContent) {
+      const txt = cleanText(el.textContent);
+      if (txt.toLowerCase().includes('glossary') || txt.length > 30) {
+        return txt;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
   const questions: Question[] = [];
+  const listeningData = findListeningData(doc);
 
-  // Look for potential question container elements (including Macmillan specific classes)
+  // Look for potential question container elements (including Macmillan specific classes and courseware components)
   const containerSelectors = [
     '.exercise-item',
     '.question-card',
@@ -131,10 +226,12 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     '.task-item',
     '.activity-item',
     '.activity-content',
+    '.activity-body',
     '[class*="activity-item"]',
     '[class*="question-item"]',
     '[class*="exercise-item"]',
     '[class*="gap-fill"]',
+    '[class*="gapfill"]',
     '[class*="task-"]',
     '[data-question-id]',
     '[data-question]',
@@ -145,17 +242,305 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     'fieldset',
     '.form-group',
     'li.exercise',
+    '.rubric-item',
+    '.rubric',
   ];
+
+  // 1. FIRST-CLASS MACMILLAN DROPDOWN GAP-FILL (.dropDown, select[id*="ui-id-"], [data-rcfid*="dropDown_"])
+  const dropDownWrappers = Array.from(
+    doc.querySelectorAll('.dropDown:not(.example), [data-rcfid*="dropDown_"]:not(.example)')
+  ).filter((el, idx, arr) => arr.indexOf(el) === idx) as HTMLElement[];
+
+  const macmillanSelects = dropDownWrappers.length > 0
+    ? dropDownWrappers.map((w) => (w.querySelector('select') as HTMLSelectElement | null) || (w.nextElementSibling as HTMLSelectElement | null)).filter(Boolean) as HTMLSelectElement[]
+    : Array.from(doc.querySelectorAll('select')).filter((s) => !s.closest('.example')) as HTMLSelectElement[];
+
+  if (macmillanSelects.length > 0) {
+    let dropIndex = 1;
+    for (const selectEl of macmillanSelects) {
+      const parentSentence = (selectEl.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || selectEl.parentElement || selectEl;
+      const clone = parentSentence.cloneNode(true) as HTMLElement;
+
+      clone.querySelectorAll('.ui-selectmenu-button, .ui-selectmenu-menu, .dropDown, select, button, .textControls, [style*="display: none"]').forEach((n) => {
+        const placeholder = clone.ownerDocument.createTextNode(' [_____] ');
+        n.replaceWith(placeholder);
+      });
+
+      let promptText = cleanText(clone.textContent) || `Dropdown Gap #${dropIndex}`;
+      promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+
+      const validOptions = Array.from(selectEl.options).filter((o) => o.text && o.text.trim().length > 0 && !o.text.includes('---'));
+      const options: AnswerOption[] = validOptions.map((opt, optIdx) => ({
+        id: `opt_${dropIndex}_${optIdx}`,
+        label: cleanText(opt.text),
+        value: opt.value || cleanText(opt.text),
+      }));
+
+      const fieldRef: FormFieldRef = {
+        id: `field_dropdown_${dropIndex}`,
+        selector: getUniqueCssSelector(selectEl),
+        fieldType: 'select',
+        name: selectEl.id || selectEl.getAttribute('data-rcfid') || `dropDown_${dropIndex}`,
+        currentValue: selectEl.value || undefined,
+        label: `Dropdown #${dropIndex}`,
+      };
+
+      questions.push({
+        id: `q_${dropIndex}`,
+        index: dropIndex,
+        type: 'dropdown',
+        promptText,
+        options,
+        fields: [fieldRef],
+        metadata: {
+          containerSelector: getUniqueCssSelector(parentSentence),
+        },
+      });
+      dropIndex++;
+    }
+  }
+
+  // 2. FIRST-CLASS MACMILLAN ERROR CORRECTION (.locating, .locatingItem)
+  // Macmillan locating exercises mark each incorrect word container as .locating (e.g. data-rcfid="locating_2")
+  // containing child .locatingItem ("You do")
+  const locatingContainers = Array.from(
+    doc.querySelectorAll('.locating:not(.example), [data-rcfid*="locating_"]:not(.example)')
+  ).filter((el, idx, arr) => {
+    return !el.closest('.example') && arr.indexOf(el) === idx;
+  }) as HTMLElement[];
+
+  if (locatingContainers.length > 0) {
+    let locIndex = 1;
+    for (const locEl of locatingContainers) {
+      const clickTarget = (locEl.querySelector('.locatingItem') as HTMLElement | null) || locEl;
+      const incorrectWordText = cleanText(clickTarget.textContent || locEl.textContent) || `Word #${locIndex}`;
+      const parentSentence = (locEl.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || locEl.parentElement || locEl;
+      const clone = parentSentence.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.locating_popup, .textControls, button, a.okButton, a.cancelButton, [style*="display: none"], .markable, .locating_answer').forEach((n) => n.remove());
+      const promptText = cleanText(clone.textContent) || `Sentence #${locIndex}`;
+
+      const fieldRef: FormFieldRef = {
+        id: `field_locating_${locIndex}`,
+        selector: getUniqueCssSelector(clickTarget),
+        fieldType: 'input',
+        name: locEl.getAttribute('data-rcfid') || `locating_${locIndex}`,
+        label: incorrectWordText,
+        currentValue: incorrectWordText,
+      };
+
+      questions.push({
+        id: `q_${locIndex}`,
+        index: locIndex,
+        type: 'fill_in_the_blank',
+        promptText: `Find and correct the error in: "${promptText}". Incorrect word: "${incorrectWordText}"`,
+        fields: [fieldRef],
+        metadata: {
+          containerSelector: getUniqueCssSelector(locEl),
+        },
+      });
+      locIndex++;
+    }
+  }
+
+  // 2. FIRST-CLASS MACMILLAN CUSTOM RADIO ITEM SELECT (.radioItemSelect, .radioItem, [class*="radioItemSelect"])
+  const radioSelectGroups = queryAllDeep(doc, '.radioItemSelect, [class*="radioItemSelect"], [class*="radioGroup"], .radioSelect');
+  if (radioSelectGroups.length > 0 && questions.length === 0) {
+    let rIndex = 1;
+    for (const group of radioSelectGroups) {
+      const choiceItems = Array.from(
+        group.querySelectorAll('.selectable, .radio, .dev-list-item, [data-rcfid*="item"]')
+      ) as HTMLElement[];
+
+      if (choiceItems.length > 0) {
+        // Find parent sentence or preceding prompt
+        const parentSentence = (group.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || group.parentElement || group;
+        const clone = parentSentence.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], button, [style*="display: none"]').forEach((n) => n.remove());
+        const promptText = cleanText(clone.textContent) || `Question #${rIndex}`;
+
+        const options: AnswerOption[] = [];
+        const fields: FormFieldRef[] = [];
+
+        choiceItems.forEach((item, cIdx) => {
+          const itemText = cleanText(item.textContent);
+          if (itemText) {
+            options.push({
+              id: `opt_${rIndex}_${cIdx}`,
+              label: itemText,
+              value: item.getAttribute('data-rcfid') || itemText,
+              elementSelector: getUniqueCssSelector(item),
+            });
+            fields.push({
+              id: `field_${rIndex}_${cIdx}`,
+              selector: getUniqueCssSelector(item),
+              fieldType: 'radio',
+              name: group.id || `radio_${rIndex}`,
+              currentValue: item.classList.contains('selected') ? itemText : undefined,
+              label: itemText,
+            });
+          }
+        });
+
+        if (options.length > 0) {
+          questions.push({
+            id: `q_${rIndex}`,
+            index: rIndex,
+            type: 'multiple_choice',
+            promptText,
+            options,
+            fields,
+            metadata: {
+              containerSelector: getUniqueCssSelector(group),
+            },
+          });
+          rIndex++;
+        }
+      }
+    }
+  }
+
+  // 2. FIRST-CLASS MACMILLAN DRAG & DROP / CLICK-AND-STICK (.clickAndStickable, .dragTarget)
+  const wordBoxEl = doc.querySelector('.wordBox') as HTMLElement | null;
+  const wordBankOptions: AnswerOption[] = [];
+  if (wordBoxEl) {
+    const wordItems = Array.from(
+      wordBoxEl.querySelectorAll('.draggable, .dragItem, [data-rcfid*="drag"], span, li, div')
+    ).filter(
+      (el) => el.children.length === 0 && el.textContent && el.textContent.trim().length > 1 && !el.classList.contains('count')
+    ) as HTMLElement[];
+
+    wordItems.forEach((w, wIdx) => {
+      const txt = cleanText(w.textContent);
+      if (txt && !wordBankOptions.some((o) => o.label.toLowerCase() === txt.toLowerCase())) {
+        wordBankOptions.push({
+          id: `wb_${wIdx}`,
+          label: txt,
+          value: txt,
+          elementSelector: getUniqueCssSelector(w),
+        });
+      }
+    });
+  }
+
+  // Find exactly the 7 primary droppable gap spans (ignore duplicate dragTarget wrappers)
+  const droppableGaps = Array.from(
+    doc.querySelectorAll('span.complexDroppable.rcfDroppable[data-rcfid*="complexDroppable_"], span[data-rcfid*="complexDroppable_"]')
+  ).filter((el) => !el.classList.contains('wordBox')) as HTMLElement[];
+
+  if (droppableGaps.length > 0 && questions.length === 0) {
+    let dIndex = 1;
+    for (const gapEl of droppableGaps) {
+      const parentSentence = (gapEl.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || gapEl.parentElement || gapEl;
+      const clone = parentSentence.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.dragTarget, .clickAndStickable, .complexDroppable, .wordBox, button, [style*="display: none"]').forEach((n) => {
+        const placeholder = clone.ownerDocument.createTextNode(' [_____] ');
+        n.replaceWith(placeholder);
+      });
+      let promptText = cleanText(clone.textContent) || `Gap #${dIndex}`;
+      promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+
+      const fieldRef: FormFieldRef = {
+        id: `field_drag_${dIndex}`,
+        selector: getUniqueCssSelector(gapEl),
+        fieldType: 'input',
+        name: gapEl.id || `gap_${dIndex}`,
+        label: `Gap ${dIndex}`,
+      };
+
+      questions.push({
+        id: `q_${dIndex}`,
+        index: dIndex,
+        type: 'dropdown',
+        promptText,
+        options: wordBankOptions.length > 0 ? wordBankOptions : undefined,
+        fields: [fieldRef],
+        metadata: {
+          containerSelector: getUniqueCssSelector(gapEl),
+        },
+      });
+      dIndex++;
+    }
+  }
 
   const matchedContainers = queryAllDeep(doc, containerSelectors.join(','));
 
-  if (matchedContainers.length > 0) {
+  if (matchedContainers.length > 0 && questions.length === 0) {
     let index = 1;
     for (const container of matchedContainers) {
-      const q = parseContainerIntoQuestion(container, index, doc);
-      if (q && (q.fields.length > 0 || (q.options && q.options.length > 0))) {
-        questions.push(q);
-        index++;
+      // Check if container has multiple text inputs (e.g. blog post gap-fill with 8 blanks)
+      const innerInputs = Array.from(
+        container.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea')
+      ) as HTMLElement[];
+
+      // If container has multiple text inputs and NOT a single radio group, treat EACH input as an individual question!
+      const isRadioGroup = innerInputs.length > 0 && innerInputs.every((i) => i instanceof HTMLInputElement && i.type === 'radio');
+
+      if (innerInputs.length > 1 && !isRadioGroup) {
+        for (const inputEl of innerInputs) {
+          const parentSentence = (inputEl.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || container;
+          const clone = parentSentence.cloneNode(true) as HTMLElement;
+          
+          // Replace all input, select, dropdown wrappers with blank placeholder [_____] in the prompt
+          clone.querySelectorAll('.ui-selectmenu-button, .ui-selectmenu-menu, .dropDown, select, input, textarea, .markable').forEach((n) => {
+            const placeholder = clone.ownerDocument.createTextNode(' [_____] ');
+            n.replaceWith(placeholder);
+          });
+          clone.querySelectorAll(
+            'button, a.okButton, a.cancelButton, .locating_popup, .textControls, .options, [style*="display: none"]'
+          ).forEach((n) => n.remove());
+
+          let promptText = cleanText(clone.textContent) || `Sentence #${index}`;
+          // Compress multiple blanks if any
+          promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+
+          let options: AnswerOption[] | undefined = undefined;
+          let fieldType: FormFieldRef['fieldType'] = 'input';
+          let qType: Question['type'] = 'fill_in_the_blank';
+
+          const tag = (inputEl.tagName || '').toUpperCase();
+          if (tag === 'SELECT') {
+            fieldType = 'select';
+            qType = 'dropdown';
+            const selectEl = inputEl as HTMLSelectElement;
+            const validOptions = Array.from(selectEl.options).filter((o) => o.text && o.text.trim().length > 0);
+            if (validOptions.length > 0) {
+              options = validOptions.map((opt, optIdx) => ({
+                id: `opt_${index}_${optIdx}`,
+                label: cleanText(opt.text),
+                value: opt.value || opt.text,
+              }));
+            }
+          }
+
+          const fieldRef: FormFieldRef = {
+            id: `field_${index}`,
+            selector: getUniqueCssSelector(inputEl),
+            fieldType,
+            name: inputEl.getAttribute('name') || undefined,
+            placeholder: inputEl.getAttribute('placeholder') || undefined,
+            currentValue: (inputEl as HTMLInputElement).value || undefined,
+            label: findLabelForElement(inputEl),
+          };
+
+          questions.push({
+            id: `q_${index}`,
+            index,
+            type: qType,
+            promptText,
+            options,
+            fields: [fieldRef],
+            metadata: {
+              containerSelector: getUniqueCssSelector(parentSentence),
+            },
+          });
+          index++;
+        }
+      } else {
+        const q = parseContainerIntoQuestion(container, index, doc);
+        if (q && (q.fields.length > 0 || (q.options && q.options.length > 0))) {
+          questions.push(q);
+          index++;
+        }
       }
     }
   }
@@ -269,6 +654,36 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     }
   }
 
+  const glossaryText = findGlossaryData(doc);
+
+  // Annotate all questions with listening context and glossary definitions if present
+  for (const q of questions) {
+    const contextParts: string[] = [];
+    if (q.contextText) contextParts.push(q.contextText);
+
+    if (listeningData.isListening || listeningData.transcript || listeningData.audioUrl) {
+      q.metadata = {
+        ...q.metadata,
+        isListening: listeningData.isListening,
+        audioUrl: listeningData.audioUrl,
+        audioTranscript: listeningData.transcript,
+      };
+      if (listeningData.transcript) {
+        contextParts.push(`[Audio Transcript / Tapescript]:\n${listeningData.transcript}`);
+      } else if (listeningData.isListening) {
+        contextParts.push(`[Note: Listening exercise. Audio: ${listeningData.audioUrl || 'in player'}]`);
+      }
+    }
+
+    if (glossaryText) {
+      contextParts.push(`[Glossary / Vocabulary Notes]:\n${glossaryText}`);
+    }
+
+    if (contextParts.length > 0) {
+      q.contextText = contextParts.join('\n\n');
+    }
+  }
+
   return questions;
 }
 
@@ -285,7 +700,10 @@ function parseContainerIntoQuestion(
   let promptText = '';
   if (promptEl) {
     const clone = promptEl.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('input, select, textarea, button, .options').forEach((n) => n.remove());
+    // Strip all inputs, buttons, modal popups, and controls so their UI text doesn't contaminate the sentence
+    clone.querySelectorAll(
+      'input, select, textarea, button, a.okButton, a.cancelButton, .locating_popup, .textControls, .options, [style*="display: none"]'
+    ).forEach((n) => n.remove());
     promptText = cleanText(clone.textContent);
   }
 
@@ -370,7 +788,9 @@ function findPromptForElements(elements: HTMLElement[], parentBlock: HTMLElement
   // Try finding header, legend, or preceding paragraph in parent block
   const heading = parentBlock.querySelector('legend, h1, h2, h3, h4, h5, p.prompt, .question-text');
   if (heading) {
-    return cleanText(heading.textContent);
+    const clone = heading.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.locating_popup, .textControls, button, a.okButton, a.cancelButton, input').forEach((n) => n.remove());
+    return cleanText(clone.textContent);
   }
 
   // Look for preceding sibling text node or element before the first element
@@ -378,11 +798,15 @@ function findPromptForElements(elements: HTMLElement[], parentBlock: HTMLElement
   let prev = first.previousElementSibling;
   while (prev) {
     if (['P', 'SPAN', 'DIV', 'LABEL'].includes(prev.tagName)) {
-      const txt = cleanText(prev.textContent);
+      const clone = prev.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.locating_popup, .textControls, button, a.okButton, a.cancelButton, input').forEach((n) => n.remove());
+      const txt = cleanText(clone.textContent);
       if (txt.length > 3) return txt;
     }
     prev = prev.previousElementSibling;
   }
 
-  return cleanText(parentBlock.textContent?.slice(0, 80));
+  const clone = parentBlock.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('.locating_popup, .textControls, button, a.okButton, a.cancelButton, input').forEach((n) => n.remove());
+  return cleanText(clone.textContent?.slice(0, 150));
 }

@@ -43,10 +43,27 @@ export async function loadSettings(): Promise<UserSettings> {
   try {
     if (hasChromeStorage()) {
       // 1. Load general settings & persistent keys from chrome.storage.local
-      const localResult = await chrome.storage.local.get([STORAGE_KEY]);
+      const localResult = await chrome.storage.local.get([STORAGE_KEY, 'studypilot_persistent_keys']);
+      console.log('[StudyPilot Storage] Loaded from chrome.storage.local:', localResult);
+
       if (localResult[STORAGE_KEY]) {
         settings = { ...settings, ...localResult[STORAGE_KEY] };
       }
+      if (localResult.studypilot_persistent_keys) {
+        settings.apiKeys = {
+          ...settings.apiKeys,
+          ...localResult.studypilot_persistent_keys,
+        };
+      }
+
+      // Check localStorage backup
+      try {
+        const backup = localStorage.getItem('studypilot_backup_keys');
+        if (backup) {
+          const parsed = JSON.parse(backup);
+          settings.apiKeys = { ...settings.apiKeys, ...parsed };
+        }
+      } catch {}
 
       // 2. Also check session storage if any session-override keys exist
       if (chrome.storage.session) {
@@ -104,7 +121,12 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
             saveKeyToSessionOnly: false,
             apiKeys,
           },
+          studypilot_persistent_keys: apiKeys,
         });
+        // Backup to localStorage as fail-safe
+        try {
+          localStorage.setItem('studypilot_backup_keys', JSON.stringify(apiKeys));
+        } catch {}
         if (chrome.storage.session) {
           await chrome.storage.session.remove([SESSION_KEYS_KEY]);
         }
@@ -119,6 +141,7 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
         sessionStorage.setItem(SESSION_KEYS_KEY, JSON.stringify(apiKeys));
       } else {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        localStorage.setItem('studypilot_backup_keys', JSON.stringify(apiKeys));
         sessionStorage.removeItem(SESSION_KEYS_KEY);
       }
     }

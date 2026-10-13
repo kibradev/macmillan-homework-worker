@@ -35,5 +35,9 @@ export interface Question {
     platformSpecificId?: string;
     containerSelector?: string;
     sectionTitle?: string;
+    audioUrl?: string;
+    audioTranscript?: string;
+    isListening?: boolean;
+    isInsideIframe?: boolean;
   };
 }

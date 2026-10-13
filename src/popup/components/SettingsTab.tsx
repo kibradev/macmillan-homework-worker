@@ -17,6 +17,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  // Keep localSettings in sync if parent settings change
+  React.useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
+
   const providers = getAllAIProviders();
   const currentProvider = getAIProvider(localSettings.selectedProvider);
   const availableModels = currentProvider.getAvailableModels();
@@ -24,39 +29,46 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
   const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newProviderId = e.target.value as AIProviderId;
     const providerObj = getAIProvider(newProviderId);
-    setLocalSettings((prev) => ({
-      ...prev,
+    const updated: UserSettings = {
+      ...localSettings,
       selectedProvider: newProviderId,
       selectedModels: {
-        ...prev.selectedModels,
-        [newProviderId]: prev.selectedModels[newProviderId] || providerObj.getDefaultModelId(),
+        ...localSettings.selectedModels,
+        [newProviderId]: localSettings.selectedModels[newProviderId] || providerObj.getDefaultModelId(),
       },
-    }));
+    };
+    setLocalSettings(updated);
+    onSaveSettings(updated).catch(() => {});
     setTestResult(null);
   };
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setLocalSettings((prev) => ({
-      ...prev,
+    const updated: UserSettings = {
+      ...localSettings,
       apiKeys: {
-        ...prev.apiKeys,
-        [prev.selectedProvider]: val,
+        ...localSettings.apiKeys,
+        [localSettings.selectedProvider]: val,
       },
-    }));
+    };
+    setLocalSettings(updated);
+    // Instant auto-save to storage on change so user never loses it
+    onSaveSettings(updated).catch(() => {});
     setTestResult(null);
     setSavedSuccess(false);
   };
 
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    setLocalSettings((prev) => ({
-      ...prev,
+    const updated: UserSettings = {
+      ...localSettings,
       selectedModels: {
-        ...prev.selectedModels,
-        [prev.selectedProvider]: val,
+        ...localSettings.selectedModels,
+        [localSettings.selectedProvider]: val,
       },
-    }));
+    };
+    setLocalSettings(updated);
+    onSaveSettings(updated).catch(() => {});
   };
 
   const handleTestConnection = async () => {

@@ -21,8 +21,7 @@ export class GenericPlatformAdapter implements PlatformAdapter {
     return extractQuestionsFromGenericDOM(doc);
   }
 
-  async fillAnswer(doc: Document, question: Question, answer: string): Promise<boolean> {
-    const res = await fillFormField(doc, question, answer);
-    return res.success;
+  async fillAnswer(doc: Document, question: Question, answer: string): Promise<{ success: boolean; error?: string }> {
+    return fillFormField(doc, question, answer);
   }
 }

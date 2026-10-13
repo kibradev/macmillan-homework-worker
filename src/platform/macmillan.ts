@@ -70,12 +70,25 @@ export class MacmillanPlatformAdapter implements PlatformAdapter {
      * [INTEGRATION POINT 2: Macmillan Nested Activity Frames / Shadow DOM]
      * If Macmillan embeds the activity within a same-origin iframe:
      * ------------------------------------------------------------- */
-    const activityIframe = doc.querySelector('iframe.activity-frame, iframe[id*="activity"]') as HTMLIFrameElement | null;
-    if (activityIframe && activityIframe.contentDocument) {
-      const iframeDoc = activityIframe.contentDocument;
-      const iframeQuestions = extractQuestionsFromGenericDOM(iframeDoc);
-      if (iframeQuestions.length > 0) {
-        return iframeQuestions;
+    const allIframes = Array.from(doc.querySelectorAll('iframe')) as HTMLIFrameElement[];
+    for (const iframe of allIframes) {
+      try {
+        if (iframe.contentDocument && iframe.contentDocument.body) {
+          const iframeQuestions = extractQuestionsFromGenericDOM(iframe.contentDocument);
+          if (iframeQuestions.length > 0) {
+            console.log(`[StudyPilot] Found ${iframeQuestions.length} questions inside iframe!`, iframe);
+            return iframeQuestions.map((q) => ({
+              ...q,
+              metadata: {
+                ...q.metadata,
+                platformSpecificId: `macmillan_${q.id}`,
+                isInsideIframe: true,
+              },
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('[StudyPilot] Could not read iframe contentDocument:', err);
       }
     }
 
@@ -97,14 +110,27 @@ export class MacmillanPlatformAdapter implements PlatformAdapter {
     }));
   }
 
-  async fillAnswer(doc: Document, question: Question, answer: string): Promise<boolean> {
-    /* -------------------------------------------------------------
-     * [INTEGRATION POINT 4: Macmillan Custom Input Event Dispatch]
-     * In Macmillan Language Hub, custom components might listen for
-     * proprietary custom events or store answers in Angular NgModel.
-     * The fillFormField helper triggers full synthetic events & native setters.
-     * ------------------------------------------------------------- */
-    const result = await fillFormField(doc, question, answer);
-    return result.success;
+  async fillAnswer(doc: Document, question: Question, answer: string): Promise<{ success: boolean; error?: string }> {
+    console.log('[StudyPilot] MacmillanAdapter fillAnswer for Q#' + question.index, question, answer);
+    let result = await fillFormField(doc, question, answer);
+    
+    // If not found in top document, search inside child iframes
+    if (!result.success) {
+      const allIframes = Array.from(doc.querySelectorAll('iframe')) as HTMLIFrameElement[];
+      for (const iframe of allIframes) {
+        try {
+          if (iframe.contentDocument && iframe.contentDocument.body) {
+            result = await fillFormField(iframe.contentDocument, question, answer);
+            if (result.success) {
+              console.log('[StudyPilot] Filled successfully inside iframe:', iframe);
+              break;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    console.log('[StudyPilot] MacmillanAdapter fillAnswer result:', result);
+    return result;
   }
 }

@@ -30,10 +30,11 @@ chrome.runtime.onMessage.addListener((message: ExtensionRequestMessage, _sender,
 
       case 'FILL_APPROVED_ANSWER': {
         const adapter = getPlatformAdapter(window.location.href, document);
-        const success = await adapter.fillAnswer(document, message.question, message.answer);
+        const result = await adapter.fillAnswer(document, message.question, message.answer);
         return {
-          success,
-          filled: success,
+          success: result.success,
+          filled: result.success,
+          error: result.error,
         };
       }
 
