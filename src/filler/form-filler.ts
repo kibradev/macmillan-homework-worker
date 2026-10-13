@@ -274,6 +274,19 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
     }
     if (targetIndex >= 0) {
       console.log(`[StudyPilot] Selecting option #${targetIndex} ("${selectEl.options[targetIndex].text}") for select:`, selectEl);
+      // Macmillan's jQuery UI selectmenu only fires its change handlers when the index actually changes,
+      // so first let the page's own widget do the selection (MAIN world) before touching the native select.
+      if (selectEl.id) {
+        const viaWidget = await chrome.runtime
+          .sendMessage({ action: 'SYNC_RCF_SELECT', selectId: selectEl.id, index: targetIndex })
+          .catch(() => null);
+        console.log('[StudyPilot] Widget selection result:', selectEl.id, viaWidget);
+        if (viaWidget?.success && viaWidget.detail?.viaWidget && selectEl.selectedIndex === targetIndex) {
+          flashHighlight(el);
+          return true;
+        }
+      }
+
       selectEl.selectedIndex = targetIndex;
       selectEl.value = selectEl.options[targetIndex].value;
       
@@ -337,6 +350,7 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
           const synced = await chrome.runtime
             .sendMessage({ action: 'SYNC_RCF_SELECT', selectId: selectEl.id })
             .catch(() => null);
+          console.log('[StudyPilot] MAIN world RCF select sync result:', selectEl.id, synced);
           if (!synced?.success) {
             console.warn('[StudyPilot] MAIN world RCF select sync failed:', synced);
           }

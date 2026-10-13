@@ -66,4 +66,6 @@ export interface FillApprovedAnswerResponse {
 export interface SyncRcfSelectMessage extends BaseMessage {
   action: 'SYNC_RCF_SELECT';
   selectId: string;
+  /** Option index to select through the widget so Macmillan's change handlers fire. */
+  index?: number;
 }
