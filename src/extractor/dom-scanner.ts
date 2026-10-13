@@ -269,6 +269,18 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       let promptText = cleanText(clone.textContent) || `Dropdown Gap #${dropIndex}`;
       promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
 
+      // Dialogue items keep the other speaker's line in a sibling <p> of the same <li>; pass it as context.
+      // Feedback blocks are skipped on purpose: they explain (and often reveal) the answer.
+      let itemContext: string | undefined;
+      const item = selectEl.closest('li') as HTMLElement | null;
+      if (item && item !== parentSentence && item.contains(parentSentence)) {
+        const itemClone = item.cloneNode(true) as HTMLElement;
+        itemClone.querySelectorAll('.feedback, .dev-feedback, .ui-selectmenu-menu, .ui-selectmenu-button, select, button').forEach((n) => n.remove());
+        itemClone.querySelectorAll('.dropDown').forEach((n) => n.replaceWith(clone.ownerDocument.createTextNode(' [_____] ')));
+        const ctx = cleanText(itemClone.textContent).replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+        if (ctx && ctx !== promptText) itemContext = ctx;
+      }
+
       const validOptions = Array.from(selectEl.options).filter((o) => o.text && o.text.trim().length > 0 && !o.text.includes('---'));
       const options: AnswerOption[] = validOptions.map((opt, optIdx) => ({
         id: `opt_${dropIndex}_${optIdx}`,
@@ -290,6 +302,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
         index: dropIndex,
         type: 'dropdown',
         promptText,
+        contextText: itemContext,
         options,
         fields: [fieldRef],
         metadata: {
