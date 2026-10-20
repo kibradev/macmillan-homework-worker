@@ -5,7 +5,19 @@ export function getUniqueCssSelector(el: Element): string {
   // 1. Prioritize Macmillan data-rcfid (most stable and unique attribute in Macmillan RCF)
   const rcfid = el.getAttribute('data-rcfid');
   if (rcfid) {
-    return `[data-rcfid="${CSS.escape(rcfid)}"]`;
+    const base = `[data-rcfid="${CSS.escape(rcfid)}"]`;
+    // data-rcfid is only unique within its parent widget (every radio group has its own item_1), so scope repeats.
+    const root = el.ownerDocument;
+    if (root && root.querySelectorAll(base).length > 1) {
+      for (let anc = el.parentElement; anc; anc = anc.parentElement) {
+        const ancId = anc.getAttribute('data-rcfid');
+        const ancSel = anc.id ? `#${CSS.escape(anc.id)}` : ancId ? `[data-rcfid="${CSS.escape(ancId)}"]` : null;
+        if (ancSel && root.querySelectorAll(`${ancSel} ${base}`).length === 1) {
+          return `${ancSel} ${base}`;
+        }
+      }
+    }
+    return base;
   }
 
   // 2. Element ID (if valid and not containing unescaped raw spaces)
@@ -177,7 +189,8 @@ export function findListeningData(doc: Document | Element): { isListening: boole
       return text.length > 15 && !/^(show|hide)\s*captions/i.test(text);
     }) as HTMLElement | undefined;
     if (el) {
-      transcript = cleanText(el.textContent);
+      const lines = Array.from(el.querySelectorAll('p')).map((p) => cleanText(p.textContent)).filter(Boolean);
+      transcript = lines.length > 1 ? lines.join('\n') : cleanText(el.textContent);
       break;
     }
   }
@@ -374,7 +387,17 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
         const parentSentence = (group.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || group.parentElement || group;
         const clone = parentSentence.cloneNode(true) as HTMLElement;
         clone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], button, [style*="display: none"]').forEach((n) => n.remove());
-        const promptText = cleanText(clone.textContent) || `Question #${rIndex}`;
+        let promptText = cleanText(clone.textContent);
+        if (!promptText) {
+          // Macmillan keeps the question in a sibling <div class="prompt"> inside the same list item
+          const item = group.closest('li, .item, .sentence') as HTMLElement | null;
+          if (item) {
+            const itemClone = item.cloneNode(true) as HTMLElement;
+            itemClone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], .feedback, .dev-feedback, button').forEach((n) => n.remove());
+            promptText = cleanText(itemClone.textContent);
+          }
+        }
+        promptText = promptText || `Question #${rIndex}`;
 
         const options: AnswerOption[] = [];
         const fields: FormFieldRef[] = [];

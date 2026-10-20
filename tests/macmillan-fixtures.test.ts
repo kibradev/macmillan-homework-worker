@@ -86,3 +86,29 @@ test('RCF inspector - audio player and glossary are passive, and a captions butt
   assert.ok(report.warnings.some((w) => w.includes('without a readable transcript')));
   assert.ok(!report.warnings.some((w) => w.includes('Unsupported interaction')));
 });
+
+test('Macmillan listening radio questions - real prompt, unique per-group selectors, transcript by speaker turn', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-listening-radio.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 3);
+  assert.deepEqual(qs.map((q) => q.promptText), [
+    'Who are Lucy and Maria talking about?',
+    "Lucy ____ about Mark's experiment.",
+    'Lucy is ____.',
+  ]);
+
+  // data-rcfid="item_1" repeats in every radio group: each selector must resolve to exactly one element, in its own group
+  for (const q of qs) {
+    for (const field of q.fields) {
+      assert.equal(doc.querySelectorAll(field.selector).length, 1, `selector not unique: ${field.selector}`);
+      assert.ok(doc.querySelector(field.selector)?.closest(`#radio_${q.index}`), `selector escapes group ${q.index}: ${field.selector}`);
+    }
+  }
+
+  // Transcript keeps one speaker turn per line and is not the captions button label
+  const transcript = qs[0].metadata?.audioTranscript ?? '';
+  assert.match(transcript, /Maria: Hey Lucy! How have you been\?\nLucy: Hi Maria!/);
+  assert.doesNotMatch(transcript, /captions/i);
+  assert.match(qs[0].contextText ?? '', /Glossary/i);
+});
