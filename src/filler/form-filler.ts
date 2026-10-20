@@ -76,7 +76,8 @@ async function tickCheckbox(el: HTMLElement): Promise<boolean> {
 /**
  * Index of the <option> an answer refers to, or -1.
  * The empty "clear" entry must never match: 'anything'.includes('') is true, so a naive substring test lands on it.
- * Exact matches win; a partial match is only a fallback and prefers the longest option text ("solved" over "solve").
+ * Exact matches win. A partial match is only a fallback: whole words only, at least 3 characters, longest option
+ * text preferred ("no" must not match "not enough information").
  */
 export function findOptionIndex(options: ArrayLike<{ value: string; text: string }>, answer: string): number {
   const wanted = normalizeOptionText(answer);
@@ -92,8 +93,14 @@ export function findOptionIndex(options: ArrayLike<{ value: string; text: string
   const exact = entries.find((e) => e.text && (e.text === wanted || (e.value && e.value === rawAnswer)));
   if (exact) return exact.index;
 
+  const padded = (text: string) => ` ${text} `;
   const partial = entries
-    .filter((e) => e.text && wanted.length > 2 && (e.text.includes(wanted) || wanted.includes(e.text)))
+    .filter(
+      (e) =>
+        e.text &&
+        Math.min(e.text.length, wanted.length) >= 3 &&
+        (padded(e.text).includes(padded(wanted)) || padded(wanted).includes(padded(e.text)))
+    )
     .sort((a, b) => b.text.length - a.text.length)[0];
   return partial ? partial.index : -1;
 }
@@ -184,15 +191,20 @@ export async function fillFormField(
     }
 
     if (question.options && question.options.length > 0) {
+      const textIndex = findOptionIndex(
+        question.options.map((o) => ({ value: o.value, text: o.label })),
+        approvedAnswer
+      );
       const matchedOpt =
         (matchedOptionIndex >= 0 ? question.options[matchedOptionIndex] : null) ||
-        question.options.find(
-          (o) =>
-            o.value.toLowerCase() === cleanAnswer ||
-            o.label.toLowerCase() === cleanAnswer ||
-            o.label.toLowerCase().includes(cleanAnswer) ||
-            cleanAnswer.includes(o.label.toLowerCase())
-        );
+        (textIndex >= 0 ? question.options[textIndex] : null);
+
+      if (!matchedOpt) {
+        return {
+          success: false,
+          error: `The answer "${approvedAnswer}" does not match any option of Question #${question.index}.`,
+        };
+      }
 
       // Only use matchedOpt.elementSelector if field itself is NOT a droppable gap
       const isDroppableQuestion = question.fields.some((f) => f.id.includes('drag') || f.name?.includes('gap'));
@@ -273,12 +285,13 @@ export async function fillFormField(
                             findDeepElement(doc, `[data-rcfid="radio_${question.index}"]`);
     if (directRadioGroup) {
       const items = Array.from(directRadioGroup.querySelectorAll('.selectable, .radio, .dev-list-item, [data-rcfid*="item"]')) as HTMLElement[];
-      for (const it of items) {
-        const itText = it.textContent?.trim().toLowerCase() || '';
-        if (itText === cleanAnswer || (cleanAnswer.length > 2 && itText.includes(cleanAnswer)) || (cleanAnswer.length > 2 && cleanAnswer.includes(itText))) {
-          console.log('[StudyPilot] Matched Macmillan radio chip item:', it);
-          if (await fillAnyElement(doc, it, approvedAnswer)) return { success: true };
-        }
+      const chipIndex = findOptionIndex(
+        items.map((it) => ({ value: '', text: it.textContent || '' })),
+        approvedAnswer
+      );
+      if (chipIndex >= 0) {
+        console.log('[StudyPilot] Matched Macmillan radio chip item:', items[chipIndex]);
+        if (await fillAnyElement(doc, items[chipIndex], approvedAnswer)) return { success: true };
       }
     }
 

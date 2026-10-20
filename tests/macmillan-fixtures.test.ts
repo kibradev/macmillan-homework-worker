@@ -170,8 +170,11 @@ test('Macmillan word-box carousel - one paragraph with many gaps is not sent twi
   assert.equal(qs.length, 8);
   assert.equal(qs[0].options?.length, 8);
   qs.forEach((q, i) => assert.ok(q.promptText.includes(`(Answer ONLY for [BLANK ${i + 1}])`), q.promptText));
-  // Passage == prompt, so the context only carries the single-use rule
-  assert.equal(qs[0].contextText, '[Note: each word in the word bank can be used only once.]');
+  // Passage == prompt, so the context carries only the instructions and the single-use rule, not the paragraph again
+  assert.equal(
+    qs[0].contextText,
+    '[Instructions]: Complete the blog post with suitable words.\n\n[Note: each word in the word bank can be used only once.]'
+  );
 });
 
 test('Macmillan word-box carousel - filler pages to the wanted word before picking it', async () => {
@@ -416,7 +419,8 @@ test('Macmillan reading activity - the reading text (hidden in a sliding panel) 
   assert.equal(q.options?.length, 3);
 
   const context = q.contextText ?? '';
-  assert.match(context, /^\[Reading text\]:/, `no reading text in context: ${JSON.stringify(context.slice(0, 80))}`);
+  assert.match(context, /^\[Instructions\]: Read the text and answer the question\./);
+  assert.match(context, /\[Reading text\]:\n/, `no reading text in context: ${JSON.stringify(context.slice(0, 80))}`);
   assert.match(context, /three-quarters of all scientific research is published in English/);
   assert.match(context, /which language should we discuss it\?!/);
   // Paragraphs stay separate, and the panel's own buttons ("Read", "Close") are not part of the text
@@ -443,5 +447,56 @@ test('AI prompt - a context shared by several questions is sent once, unique con
   const [only] = extractQuestionsFromGenericDOM(loadFixture('tests/fixtures/macmillan-reading-radio.html'));
   const single = buildQuestionsPrompt([only]);
   assert.doesNotMatch(single, /Shared context/);
-  assert.match(single, /"context": "\[Reading text\]:/);
+  assert.match(single, /"context": "\[Instructions\]: Read the text and answer the question\.\\n\\n\[Reading text\]:/);
+});
+
+test('Macmillan reading + rhetorical questions - instructions and reading text reach the AI, prompt shows both once', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-reading-rhetorical.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 3);
+  assert.deepEqual(qs.map((q) => q.promptText), [
+    '… but is the dominance of English in the sciences a bad thing?',
+    'Has English always dominated in the sciences?',
+    '… what are the benefits for scientists of communicating mainly through English?',
+  ]);
+  assert.deepEqual(qs[0].options?.map((o) => o.label), ['Yes', 'No', "The writer doesn't answer this."]);
+
+  // The task description is what makes these one-line questions answerable
+  for (const q of qs) {
+    assert.match(q.contextText ?? '', /^\[Instructions\]: Look at the rhetorical questions from the text\./);
+    assert.match(q.contextText ?? '', /\[Reading text\]:\nIt's becoming more and more important/);
+  }
+
+  // Same instructions + text for all questions: sent once
+  const prompt = buildQuestionsPrompt(qs);
+  assert.equal(prompt.split('three-quarters of all scientific research').length - 1, 1);
+  assert.equal(prompt.split('Look at the rhetorical questions').length - 1, 1);
+  assert.match(prompt, /\[Shared context for questions q_1, q_2, q_3\]/);
+
+  assert.equal(inspectRcfPage(doc).context.readingFound, true);
+  assert.deepEqual(inspectRcfPage(doc).warnings, []);
+});
+
+test('Macmillan choice answers - an exact option wins over a partial match ("No" is not "The writer doesn\'t answer this.")', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-reading-rhetorical.html');
+  // Stand-in for RCF: clicking a chip selects it and deselects its group
+  doc.querySelectorAll('[role="radio"]').forEach((chip) =>
+    chip.addEventListener('click', () => {
+      chip.parentElement!.querySelectorAll('[role="radio"]').forEach((c) => c.setAttribute('aria-checked', String(c === chip)));
+    })
+  );
+  const qs = extractQuestionsFromGenericDOM(doc);
+  const picked = (n: number) =>
+    Array.from(doc.querySelectorAll(`#radio_${n} [role="radio"]`)).findIndex((c) => c.getAttribute('aria-checked') === 'true');
+
+  assert.equal((await fillFormField(doc, qs[0], 'No')).success, true);
+  assert.equal(picked(1), 1);
+  assert.equal((await fillFormField(doc, qs[1], 'Yes')).success, true);
+  assert.equal(picked(2), 0);
+  assert.equal((await fillFormField(doc, qs[1], "The writer doesn't answer this.")).success, true);
+  assert.equal(picked(2), 2);
+  // An answer sentence that merely contains "no" must not select the "No" chip
+  assert.equal((await fillFormField(doc, qs[0], 'Not enough information to say')).success, false);
+  assert.equal(picked(1), 1, 'a non-matching answer must leave the previous choice alone');
 });

@@ -855,6 +855,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
 
   const glossaryText = findGlossaryData(doc);
   const readingText = findReadingText(doc);
+  const rubricText = cleanText(doc.querySelector('.rubric, .rubricBody')?.textContent);
 
   // Annotate all questions with listening context and glossary definitions if present
   for (const q of questions) {
@@ -873,6 +874,12 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       } else if (listeningData.isListening) {
         contextParts.push(`[Note: Listening exercise. Audio: ${listeningData.audioUrl || 'in player'}]`);
       }
+    }
+
+    // The activity's task description ("Choose...", "What is the writer's answer to each question?") makes short
+    // questions answerable. Identical for every question, so the prompt builder sends it once.
+    if (rubricText && !contextParts.some((part) => part.includes(rubricText))) {
+      contextParts.unshift(`[Instructions]: ${rubricText}`);
     }
 
     if (readingText && !contextParts.some((part) => part.includes(readingText.slice(0, 80)))) {
