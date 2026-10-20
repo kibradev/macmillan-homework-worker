@@ -3,6 +3,7 @@ import { detectCurrentPlatform, getPlatformAdapter } from '../platform/registry'
 import { flashHighlight } from '../filler/form-filler';
 import { inspectRcfPage, snapshotRcfActivity } from '../extractor/rcf-inspector';
 import { mountFloatingUi } from '../ui/floating-ui';
+import { findNextButton } from '../extractor/next-button';
 
 // Signal script presence
 console.log('[StudyPilot] Content script initialized on:', window.location.href);
@@ -41,6 +42,18 @@ chrome.runtime.onMessage.addListener((message: ExtensionRequestMessage, _sender,
           filled: result.success,
           error: result.error,
         };
+      }
+
+      case 'GET_ACTIVITY_ID': {
+        const activity = document.querySelector('.dev-rcf-content, [data-rcfxmlid]');
+        return { success: true, id: activity?.getAttribute('data-rcfxmlid') || activity?.id || null };
+      }
+
+      case 'CLICK_NEXT': {
+        const found = findNextButton(document, message.selector);
+        if (!found.element) return { success: true, clicked: false, reason: found.reason };
+        found.element.click(); // one click, nothing else
+        return { success: true, clicked: true };
       }
 
       case 'SNAPSHOT_PAGE': {

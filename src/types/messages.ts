@@ -9,7 +9,9 @@ export type ActionType =
   | 'PING_CONTENT_SCRIPT'
   | 'SYNC_RCF_SELECT'
   | 'INSPECT_PAGE'
-  | 'SNAPSHOT_PAGE';
+  | 'SNAPSHOT_PAGE'
+  | 'CLICK_NEXT'
+  | 'GET_ACTIVITY_ID';
 
 export interface BaseMessage {
   action: ActionType;
@@ -46,6 +48,16 @@ export interface SnapshotPageMessage extends BaseMessage {
   action: 'SNAPSHOT_PAGE';
 }
 
+export interface ClickNextMessage extends BaseMessage {
+  action: 'CLICK_NEXT';
+  /** Optional CSS selector of the Next button (a setting), used instead of the built-in search. */
+  selector?: string;
+}
+
+export interface GetActivityIdMessage extends BaseMessage {
+  action: 'GET_ACTIVITY_ID';
+}
+
 export type ExtensionRequestMessage =
   | DetectPlatformMessage
   | ScanQuestionsMessage
@@ -53,7 +65,9 @@ export type ExtensionRequestMessage =
   | HighlightFieldMessage
   | PingMessage
   | InspectPageMessage
-  | SnapshotPageMessage;
+  | SnapshotPageMessage
+  | ClickNextMessage
+  | GetActivityIdMessage;
 
 export interface DetectPlatformResponse {
   success: boolean;

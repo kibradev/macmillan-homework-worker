@@ -8,7 +8,7 @@
     "dev": "vite build --watch",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/core.test.ts tests/macmillan-fixtures.test.ts tests/gemini-fallback.test.ts tests/encoding.test.ts tests/rcf-select.test.ts tests/autopilot.test.ts tests/floating-ui.test.ts",
+    "test": "tsx --test tests/core.test.ts tests/macmillan-fixtures.test.ts tests/gemini-fallback.test.ts tests/encoding.test.ts tests/rcf-select.test.ts tests/autopilot.test.ts tests/floating-ui.test.ts tests/series.test.ts tests/next-button.test.ts",
     "preview": "vite preview",
     "e2e": "node e2e/macmillan-panel.e2e.mjs"
   },

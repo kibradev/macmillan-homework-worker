@@ -1,4 +1,4 @@
-import { PipelineDeps } from '../core/autopilot';
+import { SeriesDeps } from '../core/series';
 import { getAIProvider } from '../ai';
 import { loadSettings } from '../storage/settings';
 
@@ -29,7 +29,7 @@ const send = <T>(tabId: number, frameId: number, message: object): Promise<T | n
     () => null
   );
 
-export const chromeDeps: PipelineDeps = {
+export const chromeDeps: SeriesDeps = {
   loadSettings,
   getProvider: getAIProvider,
 
@@ -69,4 +69,25 @@ export const chromeDeps: PipelineDeps = {
     });
     return res ?? { success: false, error: 'Sayfa yanıt vermedi. Sayfayı yenileyip (F5) tekrar dene.' };
   },
+
+  async activityId(tabId) {
+    for (const frame of await listFrames(tabId)) {
+      const res = await send<{ success: boolean; id?: string | null }>(tabId, frame.frameId, { action: 'GET_ACTIVITY_ID' });
+      if (res?.id) return res.id;
+    }
+    return null;
+  },
+
+  async clickNext(tabId) {
+    const settings = await loadSettings();
+    // The Next button belongs to the page around the activity: the top frame
+    const res = await send<{ success: boolean; clicked?: boolean; reason?: string }>(tabId, 0, {
+      action: 'CLICK_NEXT',
+      selector: settings.nextButtonSelector || undefined,
+    });
+    if (!res) return { clicked: false, reason: 'Sayfa yanıt vermedi.' };
+    return { clicked: !!res.clicked, reason: res.reason };
+  },
+
+  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };

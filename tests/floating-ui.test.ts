@@ -257,3 +257,102 @@ test('Floating UI - typing in the panel does not reach the page\'s keyboard shor
   assert.equal(reached, 0);
   ui.destroy();
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Optional "Otomatik ilerle" (solve everything) section
+
+const setInput = (root: ShadowRoot, label: string, value: string) => {
+  const input = root.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement;
+  input.value = value;
+};
+
+test('Floating UI series - "Tümünü Çöz" asks for confirmation first and sends nothing until confirmed', () => {
+  const { ports, $, click, root } = setup();
+  click('.sp-toggle');
+
+  click('.sp-series-start');
+  assert.equal(($('.sp-confirm') as HTMLElement).hidden, false);
+  assert.match($('.sp-confirm-text').textContent!, /En çok 10 etkinlik boyunca/);
+  assert.match($('.sp-confirm-text').textContent!, /aralarda 5 sn/);
+  assert.match($('.sp-confirm-text').textContent!, /Check\/Submit'e basmaz/);
+  assert.equal(ports.length, 0, 'nothing is started by the first click');
+
+  // "Vazgeç" backs out
+  (Array.from(root.querySelectorAll('.sp-confirm .sp-btn')) as HTMLElement[]).find((b) => b.textContent === 'Vazgeç')!.click();
+  assert.equal(($('.sp-confirm') as HTMLElement).hidden, true);
+  assert.equal(ports.length, 0);
+});
+
+test('Floating UI series - confirming starts the series with the chosen limits', () => {
+  const { ports, click, root } = setup();
+  click('.sp-toggle');
+  setInput(root, 'En çok etkinlik', '3');
+  setInput(root, 'Bekleme (sn)', '2');
+
+  click('.sp-series-start');
+  (Array.from(root.querySelectorAll('.sp-confirm .sp-btn')) as HTMLElement[]).find((b) => b.textContent === 'Başlat')!.click();
+
+  assert.equal(ports.length, 1);
+  assert.deepEqual(ports[0].sent, [{ cmd: 'series', max: 3, delaySeconds: 2 }]);
+});
+
+test('Floating UI series - out-of-range limits are clamped before they are sent', () => {
+  const { ports, click, root } = setup();
+  click('.sp-toggle');
+  setInput(root, 'En çok etkinlik', '9999');
+  setInput(root, 'Bekleme (sn)', '0');
+  click('.sp-series-start');
+  (Array.from(root.querySelectorAll('.sp-confirm .sp-btn')) as HTMLElement[]).find((b) => b.textContent === 'Başlat')!.click();
+
+  assert.deepEqual(ports[0].sent, [{ cmd: 'series', max: 100, delaySeconds: 5 }]);
+});
+
+test('Floating UI series - shows the activity counter, offers Stop, and Stop is sent on the same connection', () => {
+  const { ports, $, click, progress, root } = setup();
+  click('.sp-toggle');
+  assert.equal(($('.sp-stop') as HTMLElement).hidden, true, 'no Stop button when nothing runs');
+
+  click('.sp-series-start');
+  (Array.from(root.querySelectorAll('.sp-confirm .sp-btn')) as HTMLElement[]).find((b) => b.textContent === 'Başlat')!.click();
+  progress(ports[0], { stage: 'solve', text: 'Etkinlik 2/10: Yapay zeka çözüyor…', series: { current: 2, max: 10 } });
+
+  assert.equal($('.sp-fast').textContent, 'Etkinlik 2/10');
+  assert.equal(($('.sp-stop') as HTMLElement).hidden, false);
+  assert.equal(($('.sp-series-start') as HTMLButtonElement).disabled, true, 'a second series cannot be started meanwhile');
+
+  click('.sp-stop');
+  assert.deepEqual(ports[0].sent, [{ cmd: 'series', max: 10, delaySeconds: 5 }, { cmd: 'stop' }]);
+  assert.equal($('.sp-stop').textContent, 'Duruyor…');
+  assert.equal(($('.sp-stop') as HTMLButtonElement).disabled, true, 'Stop is pressed once');
+});
+
+test('Floating UI series - a normal end reads as success, a problem as an error, and Stop disappears either way', () => {
+  const ok = setup();
+  ok.click('.sp-toggle');
+  ok.click('.sp-series-start');
+  (Array.from(ok.root.querySelectorAll('.sp-confirm .sp-btn')) as HTMLElement[]).find((b) => b.textContent === 'Başlat')!.click();
+  ok.progress(ok.ports[0], { stage: 'done', text: '3 etkinlik tamamlandı. Son etkinlik olabilir.', series: { current: 3, max: 10, finished: true, completed: 3 } });
+  ok.result(ok.ports[0], null);
+  assert.equal(ok.$('.sp-fast').textContent, '✓ 3 etkinlik');
+  assert.equal(ok.$('.sp-status').dataset.tone, 'success');
+  assert.equal((ok.$('.sp-stop') as HTMLElement).hidden, true);
+  assert.equal((ok.$('.sp-fast') as HTMLButtonElement).disabled, false);
+
+  const bad = setup();
+  bad.click('.sp-toggle');
+  bad.click('.sp-series-start');
+  (Array.from(bad.root.querySelectorAll('.sp-confirm .sp-btn')) as HTMLElement[]).find((b) => b.textContent === 'Başlat')!.click();
+  bad.progress(bad.ports[0], { stage: 'error', text: '1 etkinlik tamamlandı, sonra durdu: Etkinlik 2: 1 alan işaretlenemedi.', series: { current: 1, max: 10, finished: true, completed: 1 } });
+  bad.result(bad.ports[0], null);
+  assert.equal(bad.$('.sp-fast').textContent, 'Durdu');
+  assert.equal(bad.$('.sp-status').dataset.tone, 'error');
+  assert.match(bad.$('.sp-status').textContent!, /sonra durdu/);
+  assert.equal((bad.$('.sp-stop') as HTMLElement).hidden, true);
+});
+
+test('Floating UI series - one-click solve is unchanged and does not show the series controls as running', () => {
+  const { ports, $, click } = setup();
+  click('.sp-fast');
+  assert.deepEqual(ports[0].sent, [{ cmd: 'autopilot' }]);
+  assert.equal(($('.sp-stop') as HTMLElement).hidden, true);
+});

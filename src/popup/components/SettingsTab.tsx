@@ -310,6 +310,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
         </label>
       </div>
 
+      {/* Auto-advance (optional "solve everything" mode) */}
+      <div className="form-group">
+        <label className="form-label">Next düğmesi seçicisi (isteğe bağlı)</label>
+        <input
+          type="text"
+          className="form-input"
+          value={localSettings.nextButtonSelector}
+          onChange={(e) => {
+            const val = e.target.value;
+            setLocalSettings((prev) => ({ ...prev, nextButtonSelector: val }));
+          }}
+          placeholder="Boş bırak: etiketine göre bulunur. Örn: button.next-activity"
+        />
+        <span className="form-hint">
+          Yalnızca sayfadaki panelin &quot;Tümünü Çöz&quot; seçeneği için. Eklenti Next düğmesini bulamazsa ya da birden
+          fazla aday varsa, düğmenin CSS seçicisini buraya yapıştır.
+        </span>
+      </div>
+
       {/* Save Button */}
       <div style={{ marginTop: 'auto', paddingTop: '10px' }}>
         <button

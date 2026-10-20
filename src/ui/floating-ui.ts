@@ -70,6 +70,9 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   let session: Session | null = null;
   let items: ItemView[] = [];
   let busy = false;
+  let currentPort: PortLike | null = null;
+  let seriesRunning = false;
+  let stopping = false;
   let open = false;
   let status: { text: string; tone: Tone } = { text: 'Hazır. "Hızlı Çöz" sayfayı tarar, çözer ve işaretler.', tone: 'idle' };
   let fastLabel: string | null = null;
@@ -121,7 +124,47 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     actionButtons[act] = b;
     actions.appendChild(b);
   }
-  panel.append(head, statusBar, list, actions);
+  // Optional mode, kept apart from the one-click solve: solve, press Next, continue
+  const seriesBox = el('div', 'sp-series');
+  seriesBox.appendChild(el('div', 'sp-series-title', 'Otomatik ilerle'));
+  seriesBox.appendChild(
+    el('p', 'sp-series-hint', 'Ayrı bir seçenek: her etkinliği çözer, Next\'e basar ve sonrakine geçer. Check/Submit düğmelerine basmaz; sorun çıkarsa durur.')
+  );
+  const seriesRow = el('div', 'sp-series-row');
+  const numberField = (labelText: string, value: number, min: number, max: number) => {
+    const wrap = el('label', 'sp-field');
+    wrap.appendChild(el('span', undefined, labelText));
+    const input = el('input', 'sp-number');
+    input.type = 'number';
+    input.min = String(min);
+    input.max = String(max);
+    input.value = String(value);
+    input.setAttribute('aria-label', labelText);
+    wrap.appendChild(input);
+    seriesRow.appendChild(wrap);
+    return input;
+  };
+  const maxInput = numberField('En çok etkinlik', 10, 1, 100);
+  const delayInput = numberField('Bekleme (sn)', 5, 1, 60);
+  const seriesStart = el('button', 'sp-btn sp-series-start', 'Tümünü Çöz');
+  seriesStart.type = 'button';
+  seriesRow.appendChild(seriesStart);
+  const confirmBox = el('div', 'sp-confirm');
+  confirmBox.hidden = true;
+  const confirmText = el('p', 'sp-confirm-text');
+  const confirmRow = el('div', 'sp-series-row');
+  const confirmYes = el('button', 'sp-btn', 'Başlat');
+  confirmYes.type = 'button';
+  const confirmNo = el('button', 'sp-btn', 'Vazgeç');
+  confirmNo.type = 'button';
+  confirmRow.append(confirmYes, confirmNo);
+  confirmBox.append(confirmText, confirmRow);
+  const stopBtn = el('button', 'sp-btn sp-stop', 'Durdur');
+  stopBtn.type = 'button';
+  stopBtn.hidden = true;
+  seriesBox.append(seriesRow, confirmBox, stopBtn);
+
+  panel.append(head, statusBar, list, actions, seriesBox);
 
   const dock = el('div', 'sp-dock');
   const fast = el('button', 'sp-fast');
@@ -189,6 +232,12 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     fast.disabled = busy;
     fastText.textContent = fastLabel ?? 'Hızlı Çöz';
     for (const b of Object.values(actionButtons)) b.disabled = busy;
+    seriesStart.disabled = busy;
+    maxInput.disabled = busy;
+    delayInput.disabled = busy;
+    stopBtn.hidden = !seriesRunning;
+    stopBtn.disabled = stopping;
+    stopBtn.textContent = stopping ? 'Duruyor…' : 'Durdur';
   }
 
   function setStatus(text: string, tone: Tone, showToast = true) {
@@ -219,7 +268,14 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   function applyProgress(progress: Progress) {
     if (progress.items) items = progress.items;
 
-    if (progress.stage === 'error') {
+    if (progress.series?.finished) {
+      const ok = progress.stage === 'done';
+      setStatus(progress.text, ok ? 'success' : 'error');
+      setFastLabel(ok ? `✓ ${progress.series.completed ?? 0} etkinlik` : 'Durdu', toastMs);
+    } else if (progress.series) {
+      setStatus(progress.text, 'busy', true);
+      setFastLabel(`Etkinlik ${progress.series.current}/${progress.series.max}`);
+    } else if (progress.stage === 'error') {
       setStatus(progress.text, 'error');
       setFastLabel('Hata', toastMs);
     } else if (progress.stage === 'done') {
@@ -246,6 +302,9 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     }
 
     busy = true;
+    currentPort = port;
+    seriesRunning = command.cmd === 'series';
+    stopping = false;
     let finished = false;
     setFastLabel('Başlıyor…');
     renderList();
@@ -257,6 +316,9 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
       }
       finished = true;
       busy = false;
+      currentPort = null;
+      seriesRunning = false;
+      stopping = false;
       if (message.session) {
         session = message.session;
       } else if (command.cmd === 'scan' || command.cmd === 'autopilot') {
@@ -277,6 +339,9 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     port.onDisconnect.addListener(() => {
       if (finished) return;
       busy = false;
+      currentPort = null;
+      seriesRunning = false;
+      stopping = false;
       setStatus('Bağlantı koptu. Sayfayı yenileyip (F5) tekrar dene.', 'error');
       setFastLabel('Hata', toastMs);
       renderList();
@@ -319,6 +384,35 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   actionButtons.fill.addEventListener('click', () => {
     const s = needSession();
     if (s) run({ cmd: 'fill', session: s });
+  });
+
+  const seriesOptions = () => ({
+    max: Math.min(100, Math.max(1, Math.floor(Number(maxInput.value) || 10))),
+    delaySeconds: Math.min(60, Math.max(1, Number(delayInput.value) || 5)),
+  });
+  seriesStart.addEventListener('click', () => {
+    if (busy) return;
+    const { max, delaySeconds } = seriesOptions();
+    confirmText.textContent = `En çok ${max} etkinlik boyunca çözüp Next'e basacak, aralarda ${delaySeconds} sn bekleyecek. Check/Submit'e basmaz. Başlatılsın mı?`;
+    confirmBox.hidden = false;
+  });
+  confirmNo.addEventListener('click', () => {
+    confirmBox.hidden = true;
+  });
+  confirmYes.addEventListener('click', () => {
+    confirmBox.hidden = true;
+    open = true;
+    run({ cmd: 'series', ...seriesOptions() });
+  });
+  stopBtn.addEventListener('click', () => {
+    if (!currentPort || stopping) return;
+    stopping = true;
+    try {
+      currentPort.postMessage({ cmd: 'stop' } satisfies UiCommand);
+    } catch {
+      /* the connection is already gone */
+    }
+    renderChrome();
   });
 
   // Typing in the panel must not trigger the site's own keyboard shortcuts

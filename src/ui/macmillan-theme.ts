@@ -48,6 +48,23 @@ export const MACMILLAN_THEME_CSS = `
 .sp[data-open="true"] .sp-toggle svg { transform: rotate(180deg); }
 .sp-icon { width: 16px; height: 16px; flex: none; }
 
+/* ---- optional "solve everything" section ---- */
+.sp-series { display: grid; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--n-100); }
+.sp-series-title { font-weight: 600; font-size: 13px; }
+.sp-series-hint { margin: 0; font-size: 12px; color: var(--n-700); }
+.sp-series-row { display: flex; align-items: flex-end; gap: 8px; }
+.sp-field { display: grid; gap: 2px; font-size: 11px; color: var(--n-700); }
+.sp-number {
+  width: 64px; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--n-900);
+  background: #fff; border: 1px solid var(--n-200); border-radius: 4px;
+}
+.sp-number:focus { border-color: var(--blue-500); }
+.sp-series-start { flex: 1; }
+.sp-confirm { padding: 8px 10px; border: 1px solid var(--yellow-200); border-radius: 4px; background: var(--yellow-50); }
+.sp-confirm-text { margin: 0 0 8px; font-size: 12px; color: var(--yellow-800); }
+.sp-stop { color: var(--red); border-color: var(--red); }
+.sp-stop:hover:not(:disabled) { background: var(--red); border-color: var(--red); color: #fff; }
+
 /* ---- small bubble with the latest message while the panel is closed ---- */
 .sp-toast {
   max-width: min(340px, calc(100vw - 40px));

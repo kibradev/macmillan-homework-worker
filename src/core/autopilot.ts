@@ -51,6 +51,8 @@ export interface Progress {
   text: string;
   items?: ItemView[];
   summary?: { total: number; filled: number; failed: number };
+  /** Present while the optional "solve everything" mode runs. */
+  series?: { current: number; max: number; finished?: boolean; completed?: number };
 }
 
 export type Report = (progress: Progress) => void;

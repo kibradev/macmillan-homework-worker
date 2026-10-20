@@ -9,6 +9,8 @@ export interface UserSettings {
   confidenceThreshold: number;
   autoFillOnGenerate: boolean;
   autoApproveAll: boolean;
+  /** CSS selector of the Next button, for "solve everything". Empty: search by label. */
+  nextButtonSelector: string;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -28,6 +30,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   confidenceThreshold: 0.7,
   autoFillOnGenerate: true,
   autoApproveAll: true,
+  nextButtonSelector: '',
 };
 
 const STORAGE_KEY = 'studypilot_settings';

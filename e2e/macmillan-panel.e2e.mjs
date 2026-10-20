@@ -51,15 +51,35 @@ const TOP = `<!doctype html><html><head><meta charset="utf-8"><title>Macmillan E
 <style>body{margin:0;font-family:'Open Sans',Arial,sans-serif;background:#ECF1FB}iframe{width:100%;height:520px;border:0;background:#fff}</style></head>
 <body><h1 style="padding:8px 16px;margin:0">Unit 2 - Vocabulary practice</h1><iframe src="/rcf-player.html"></iframe></body></html>`;
 
+const COURSE = `<!doctype html><html><head><meta charset="utf-8"><title>Macmillan course (test shell)</title>
+<style>body{margin:0;font-family:'Open Sans',Arial,sans-serif}iframe{width:100%;height:480px;border:0}nav{padding:8px 16px;background:#ECF1FB;display:flex;gap:8px}</style></head>
+<body><nav><button id="previous">Previous</button><button id="next">Next</button><button id="submit">Submit</button></nav>
+<iframe id="player" src="/rcf-player.html?n=1"></iframe>
+<script>
+  window.__submitClicked = false; window.__nextClicks = 0;
+  document.getElementById('submit').onclick = () => { window.__submitClicked = true; };
+  let n = 1; const total = 3;
+  document.getElementById('next').onclick = () => {
+    window.__nextClicks++; n++;
+    document.getElementById('player').src = '/rcf-player.html?n=' + n;
+    if (n >= total) document.getElementById('next').remove();
+  };
+</script></body></html>`;
+
 const server = createServer((req, res) => {
   const send = (type, body) => {
     res.writeHead(200, { 'Content-Type': type });
     res.end(body);
   };
-  if (req.url === '/') return send('text/html', TOP);
-  if (req.url === '/rcf-player.html') return send('text/html', PLAYER);
-  if (req.url === '/vendor/jquery.js') return send('text/javascript', readFileSync(join(root, 'node_modules/jquery/dist/jquery.js')));
-  if (req.url === '/vendor/jquery-ui.js') return send('text/javascript', readFileSync(join(root, 'node_modules/jquery-ui/dist/jquery-ui.js')));
+  const requestUrl = new URL(req.url, 'http://x');
+  if (requestUrl.pathname === '/') return send('text/html', TOP);
+  if (requestUrl.pathname === '/course') return send('text/html', COURSE);
+  if (requestUrl.pathname === '/rcf-player.html') {
+    const activity = requestUrl.searchParams.get('n') || '1';
+    return send('text/html', PLAYER.replace('<div class="dev-rcf-content activity mm_C04"', `<div data-rcfxmlid="activity-${activity}" class="dev-rcf-content activity mm_C04"`));
+  }
+  if (requestUrl.pathname === '/vendor/jquery.js') return send('text/javascript', readFileSync(join(root, 'node_modules/jquery/dist/jquery.js')));
+  if (requestUrl.pathname === '/vendor/jquery-ui.js') return send('text/javascript', readFileSync(join(root, 'node_modules/jquery-ui/dist/jquery-ui.js')));
   res.writeHead(404).end();
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -221,6 +241,48 @@ try {
   check('and fills the cleared gaps again', JSON.stringify(again) === JSON.stringify(expected), JSON.stringify(again));
   const orderAgain = await frame.evaluate(() => Array.from(document.querySelectorAll('[data-rcfid="ordering_1"] li')).map((li) => li.textContent).join(' '));
   check('and puts the shuffled words back in order', orderAgain === 'a giving hand me mind Would you ?', orderAgain);
+  // ---- optional mode: solve everything, pressing Next --------------------------------------------------------------
+  const before = aiRequests.length;
+  const course = await browser.newPage();
+  await course.goto(`http://${HOST}:${port}/course`, { waitUntil: 'networkidle0' });
+  await course.waitForFunction(() => !!document.getElementById('studypilot-root'), { timeout: 10000 });
+  const courseShadow = (script) => course.evaluate(`(() => { const r = document.getElementById('studypilot-root').shadowRoot; return (${script})(r); })()`);
+
+  await courseShadow(`(r) => r.querySelector('.sp-toggle').click()`);
+  await courseShadow(`(r) => { const set = (label, v) => { r.querySelector('input[aria-label="' + label + '"]').value = v; }; set('En çok etkinlik', '5'); set('Bekleme (sn)', '1'); r.querySelector('.sp-series-start').click(); }`);
+  const confirmText = await courseShadow(`(r) => r.querySelector('.sp-confirm-text').textContent`);
+  check('"Tümünü Çöz" asks for confirmation and nothing starts yet', /En çok 5 etkinlik/.test(confirmText) && aiRequests.length === before, confirmText);
+  await courseShadow(`(r) => Array.from(r.querySelectorAll('.sp-confirm .sp-btn')).find((b) => b.textContent === 'Başlat').click()`);
+
+  await course
+    .waitForFunction(
+      () => {
+        const label = document.getElementById('studypilot-root').shadowRoot.querySelector('.sp-fast').textContent;
+        return label.startsWith('✓') || label === 'Durdu';
+      },
+      { timeout: 120000, polling: 500 }
+    )
+    .catch(() => {});
+  const seriesOutcome = await courseShadow(`(r) => ({ label: r.querySelector('.sp-fast').textContent, text: r.querySelector('.sp-status').textContent, tone: r.querySelector('.sp-status').dataset.tone })`);
+  check('the series solved all 3 activities and ended normally on the last one', seriesOutcome.label === '✓ 3 etkinlik' && seriesOutcome.tone === 'success', JSON.stringify(seriesOutcome));
+  check('the AI was asked once per activity (3 requests)', aiRequests.length - before === 3, `${aiRequests.length - before}`);
+
+  const nav = await course.evaluate(() => ({ next: window.__nextClicks, submit: window.__submitClicked }));
+  check('Next was pressed exactly twice (between the 3 activities)', nav.next === 2, JSON.stringify(nav));
+  check('the decoy "Submit" button was never pressed', nav.submit === false, JSON.stringify(nav));
+
+  const lastFrame = course.frames().find((f) => f.url().includes('rcf-player'));
+  const lastState = await lastFrame.evaluate(() => ({
+    id: document.querySelector('[data-rcfxmlid]').getAttribute('data-rcfxmlid'),
+    gaps: Array.from(document.querySelectorAll('select')).map((sel) => sel.options[sel.selectedIndex].text),
+    order: Array.from(document.querySelectorAll('[data-rcfid="ordering_1"] li')).map((li) => li.textContent).join(' '),
+  }));
+  check(
+    'the last activity (3) is filled too: gaps and word order',
+    lastState.id === 'activity-3' && JSON.stringify(lastState.gaps) === JSON.stringify(['analysed', 'solve', 'deal with']) && lastState.order === 'a giving hand me mind Would you ?',
+    JSON.stringify(lastState)
+  );
+  await course.screenshot({ path: join(shotDir, 'e2e-4-series.png') });
 } catch (err) {
   console.log('E2E ERROR:', err);
   exitCode = 1;

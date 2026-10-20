@@ -1,6 +1,7 @@
 import { rcfSelectInMainWorld } from '../page/rcf-select';
 import { chromeDeps } from './chrome-deps';
 import { UiCommand, handleUiCommand } from '../core/ui-commands';
+import { SeriesControl } from '../core/series';
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -44,14 +45,30 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'studypilot-ui') return;
   const tabId = port.sender?.tab?.id;
 
+  // One stop flag per panel connection: the Stop button flips it, a running series checks it
+  const control: SeriesControl = { stopped: false };
+  port.onDisconnect.addListener(() => {
+    control.stopped = true;
+  });
+
   port.onMessage.addListener((command: UiCommand) => {
     if (tabId === undefined) return;
-    void handleUiCommand(chromeDeps, tabId, command, (message) => {
-      try {
-        port.postMessage(message);
-      } catch {
-        // the panel was closed or the page navigated away mid-run
-      }
-    });
+    if (command.cmd === 'stop') {
+      control.stopped = true;
+      return;
+    }
+    void handleUiCommand(
+      chromeDeps,
+      tabId,
+      command,
+      (message) => {
+        try {
+          port.postMessage(message);
+        } catch {
+          // the panel was closed or the page navigated away mid-run
+        }
+      },
+      control
+    );
   });
 });

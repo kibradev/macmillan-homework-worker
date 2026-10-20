@@ -1,11 +1,14 @@
-import { PipelineDeps, Progress, Session, fillStep, runAutoPilot, scanStep, solveStep } from './autopilot';
+import { Progress, Session, fillStep, runAutoPilot, scanStep, solveStep } from './autopilot';
+import { SeriesControl, SeriesDeps, runSeries } from './series';
 
 /** Messages the in-page panel sends to the background over a port. */
 export type UiCommand =
   | { cmd: 'autopilot' }
   | { cmd: 'scan' }
   | { cmd: 'solve'; session: Session }
-  | { cmd: 'fill'; session: Session };
+  | { cmd: 'fill'; session: Session }
+  | { cmd: 'series'; max: number; delaySeconds: number }
+  | { cmd: 'stop' };
 
 /** Messages the background sends back: any number of progress updates, then exactly one result. */
 export type UiMessage =
@@ -14,15 +17,28 @@ export type UiMessage =
 
 /** Runs one panel command and streams its progress. The session travels with the panel, so the worker stays stateless. */
 export async function handleUiCommand(
-  deps: PipelineDeps,
+  deps: SeriesDeps,
   tabId: number,
   command: UiCommand,
-  send: (message: UiMessage) => void
+  send: (message: UiMessage) => void,
+  control: SeriesControl = { stopped: false }
 ): Promise<void> {
   const report = (progress: Progress) => send({ type: 'progress', progress });
 
   try {
     switch (command.cmd) {
+      case 'stop': {
+        control.stopped = true;
+        return;
+      }
+      case 'series': {
+        const max = Math.min(100, Math.max(1, Math.floor(Number(command.max) || 1)));
+        const delaySeconds = Math.min(120, Math.max(1, Number(command.delaySeconds) || 5));
+        control.stopped = false;
+        await runSeries(deps, tabId, { max, delaySeconds }, report, control);
+        send({ type: 'result', session: null });
+        return;
+      }
       case 'autopilot': {
         send({ type: 'result', session: await runAutoPilot(deps, tabId, report) });
         return;
