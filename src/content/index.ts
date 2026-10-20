@@ -2,6 +2,7 @@ import { ExtensionRequestMessage } from '../types/messages';
 import { detectCurrentPlatform, getPlatformAdapter } from '../platform/registry';
 import { flashHighlight } from '../filler/form-filler';
 import { inspectRcfPage, snapshotRcfActivity } from '../extractor/rcf-inspector';
+import { mountFloatingUi } from '../ui/floating-ui';
 
 // Signal script presence
 console.log('[StudyPilot] Content script initialized on:', window.location.href);
@@ -71,4 +72,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionRequestMessage, _sender,
 
   return true; // Keep message channel open for async response
 });
+
+// The in-page button and panel: only in the top page of a Macmillan site (the activity itself is an iframe)
+if (window.top === window && detectCurrentPlatform(window.location.href, document).id === 'macmillan') {
+  mountFloatingUi({ connect: () => chrome.runtime.connect({ name: 'studypilot-ui' }) });
+}
 }

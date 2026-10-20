@@ -468,7 +468,7 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
         const viaWidget = await chrome.runtime
           .sendMessage({ action: 'SYNC_RCF_SELECT', selectId: selectEl.id, index: targetIndex })
           .catch(() => null);
-        console.log('[StudyPilot] Widget selection result:', selectEl.id, viaWidget);
+        console.log('[StudyPilot] Widget selection result:', selectEl.id, JSON.stringify(viaWidget));
         if (viaWidget?.success && viaWidget.detail?.viaWidget && selectEl.selectedIndex === targetIndex) {
           flashHighlight(el);
           return true;
@@ -538,9 +538,9 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
           const synced = await chrome.runtime
             .sendMessage({ action: 'SYNC_RCF_SELECT', selectId: selectEl.id })
             .catch(() => null);
-          console.log('[StudyPilot] MAIN world RCF select sync result:', selectEl.id, synced);
+          console.log('[StudyPilot] MAIN world RCF select sync result:', selectEl.id, JSON.stringify(synced));
           if (!synced?.success) {
-            console.warn('[StudyPilot] MAIN world RCF select sync failed:', synced);
+            console.warn('[StudyPilot] MAIN world RCF select sync failed:', JSON.stringify(synced));
           }
         }
       } catch (uiErr) {

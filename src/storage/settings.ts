@@ -44,7 +44,8 @@ export async function loadSettings(): Promise<UserSettings> {
     if (hasChromeStorage()) {
       // 1. Load general settings & persistent keys from chrome.storage.local
       const localResult = await chrome.storage.local.get([STORAGE_KEY, 'studypilot_persistent_keys']);
-      console.log('[StudyPilot Storage] Loaded from chrome.storage.local:', localResult);
+      // Never log the loaded object: it contains the API keys
+      console.log('[StudyPilot Storage] Loaded settings from chrome.storage.local.');
 
       if (localResult[STORAGE_KEY]) {
         settings = { ...settings, ...localResult[STORAGE_KEY] };

@@ -8,8 +8,9 @@
     "dev": "vite build --watch",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/core.test.ts tests/macmillan-fixtures.test.ts tests/gemini-fallback.test.ts tests/encoding.test.ts tests/rcf-select.test.ts",
-    "preview": "vite preview"
+    "test": "tsx --test tests/core.test.ts tests/macmillan-fixtures.test.ts tests/gemini-fallback.test.ts tests/encoding.test.ts tests/rcf-select.test.ts tests/autopilot.test.ts tests/floating-ui.test.ts",
+    "preview": "vite preview",
+    "e2e": "node e2e/macmillan-panel.e2e.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",
@@ -25,6 +26,7 @@
     "jquery": "^3.7.1",
     "jquery-ui": "^1.13.3",
     "jsdom": "^30.1.2",
+    "puppeteer-core": "^25.14.0",
     "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
