@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowDownToLine, CheckCheck, ClipboardList, Loader2, Play, RefreshCw, Sparkles, Zap } from 'lucide-react';
+import { ArrowDownToLine, CheckCheck, ClipboardList, Code2, Loader2, Play, RefreshCw, Sparkles, Zap } from 'lucide-react';
 import { AnswerReviewItem } from '../../types/answer';
 import { QuestionCard } from './QuestionCard';
 
@@ -21,6 +21,7 @@ interface ScannerTabProps {
   onClear?: () => void;
   onAutoPilot: () => void;
   onDiagnose?: () => void;
+  onSnapshot?: () => void;
 }
 
 export const ScannerTab: React.FC<ScannerTabProps> = ({
@@ -41,6 +42,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
   onClear,
   onAutoPilot,
   onDiagnose,
+  onSnapshot,
 }) => {
   const approvedCount = items.filter((i) => i.approved).length;
   const suggestionsCount = items.filter((i) => !!i.suggestion).length;
@@ -84,15 +86,29 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
         )}
       </button>
 
-      {onDiagnose && (
-        <button
-          className="btn btn-secondary"
-          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-          onClick={onDiagnose}
-          title="Sayfadaki Macmillan bile�enlerini analiz edip raporu panoya kopyalar"
-        >
-          <ClipboardList size={14} /> Tan� Raporu (panoya kopyala)
-        </button>
+      {(onDiagnose || onSnapshot) && (
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {onDiagnose && (
+            <button
+              className="btn btn-secondary"
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              onClick={onDiagnose}
+              title="Sayfadaki Macmillan bileşenlerini analiz edip raporu panoya kopyalar"
+            >
+              <ClipboardList size={14} /> Tanı Raporu
+            </button>
+          )}
+          {onSnapshot && (
+            <button
+              className="btn btn-secondary"
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              onClick={onSnapshot}
+              title="Etkinliğin temizlenmiş HTML'ini panoya kopyalar (yeni soru tiplerini desteklemek için)"
+            >
+              <Code2 size={14} /> HTML Kopyala
+            </button>
+          )}
+        </div>
       )}
 
       {/* Secondary granular action row */}

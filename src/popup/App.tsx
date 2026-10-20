@@ -304,40 +304,74 @@ export const App: React.FC = () => {
     }
   };
 
+  /** Sends `action` to every frame that holds Macmillan RCF widgets and returns their replies. */
+  const collectFromRcfFrames = async (
+    tabId: number,
+    action: 'INSPECT_PAGE' | 'SNAPSHOT_PAGE'
+  ): Promise<Array<Record<string, any>>> => {
+    const frameResults = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: () => document.querySelectorAll('[data-rcfinteraction]').length,
+    });
+    const frameIds = frameResults.filter((r) => (r.result as number) > 0).map((r) => r.frameId);
+    if (frameIds.length === 0) frameIds.push(0);
+
+    const replies: Array<Record<string, any>> = [];
+    for (const frameId of frameIds) {
+      await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ['content.js'] }).catch(() => {});
+      const res = await chrome.tabs.sendMessage(tabId, { action }, { frameId }).catch(() => null);
+      if (res?.success) replies.push({ frameId, ...res });
+    }
+    return replies;
+  };
+
   const handleDiagnose = async () => {
     setBanner(null);
     const tabId = await getActiveTabId();
     if (!tabId || !(await ensureContentScriptInjected(tabId))) {
-      setBanner({ type: 'warning', text: 'Aktif sekme bulunamad� veya i�erik beti�i y�klenemedi.' });
+      setBanner({ type: 'warning', text: 'Aktif sekme bulunamadı veya içerik betiği yüklenemedi.' });
       return;
     }
 
     try {
-      // Which frames actually contain Macmillan RCF widgets?
-      const frameResults = await chrome.scripting.executeScript({
-        target: { tabId, allFrames: true },
-        func: () => document.querySelectorAll('[data-rcfinteraction]').length,
-      });
-      const frameIds = frameResults.filter((r) => (r.result as number) > 0).map((r) => r.frameId);
-      if (frameIds.length === 0) frameIds.push(0);
-
-      const reports = [];
-      for (const frameId of frameIds) {
-        await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ['content.js'] }).catch(() => {});
-        const res = await chrome.tabs.sendMessage(tabId, { action: 'INSPECT_PAGE' }, { frameId }).catch(() => null);
-        if (res?.success) reports.push({ frameId, ...res.report });
-      }
-
+      const replies = await collectFromRcfFrames(tabId, 'INSPECT_PAGE');
+      const reports = replies.map((r) => ({ frameId: r.frameId, ...r.report }));
       await navigator.clipboard.writeText(JSON.stringify(reports, null, 2));
       const warnings = reports.flatMap((r) => r.warnings as string[]);
       setBanner({
         type: warnings.length ? 'warning' : 'success',
         text: warnings.length
-          ? `Tan� raporu panoya kopyaland�. Uyar�: ${warnings[0]}${warnings.length > 1 ? ` (+${warnings.length - 1})` : ''}`
-          : `Tan� raporu panoya kopyaland� (${reports.length} frame). Sorun bulunmad�.`,
+          ? `Tanı raporu panoya kopyalandı. Uyarı: ${warnings[0]}${warnings.length > 1 ? ` (+${warnings.length - 1})` : ''}`
+          : `Tanı raporu panoya kopyalandı (${reports.length} frame). Sorun bulunmadı.`,
       });
     } catch (err) {
-      setBanner({ type: 'error', text: `Tan� raporu al�namad�: ${(err as Error).message}` });
+      setBanner({ type: 'error', text: `Tanı raporu alınamadı: ${(err as Error).message}` });
+    }
+  };
+
+  const handleSnapshot = async () => {
+    setBanner(null);
+    const tabId = await getActiveTabId();
+    if (!tabId || !(await ensureContentScriptInjected(tabId))) {
+      setBanner({ type: 'warning', text: 'Aktif sekme bulunamadı veya içerik betiği yüklenemedi.' });
+      return;
+    }
+
+    try {
+      const replies = await collectFromRcfFrames(tabId, 'SNAPSHOT_PAGE');
+      if (replies.length === 0) {
+        setBanner({ type: 'warning', text: 'Etkinlik bulunamadı. Ödevin tamamen yüklendiğinden emin ol.' });
+        return;
+      }
+      const snapshots = replies.map((r) => r.snapshot);
+      await navigator.clipboard.writeText(snapshots.map((s) => `<!-- ${s.url} -->\n${s.html}`).join('\n\n'));
+      const kb = Math.round(snapshots.reduce((sum, s) => sum + s.html.length, 0) / 1024);
+      setBanner({
+        type: 'success',
+        text: `Sayfa HTML'i panoya kopyalandı (${kb} KB${snapshots.some((s) => s.truncated) ? ', kısaltıldı' : ''}). Cevap açıklamaları ve görseller çıkarıldı.`,
+      });
+    } catch (err) {
+      setBanner({ type: 'error', text: `HTML kopyalanamadı: ${(err as Error).message}` });
     }
   };
 
@@ -745,6 +779,7 @@ export const App: React.FC = () => {
           onClear={handleClear}
           onAutoPilot={handleAutoPilot}
           onDiagnose={handleDiagnose}
+          onSnapshot={handleSnapshot}
         />
       ) : (
         <SettingsTab settings={settings} onSaveSettings={handleSaveSettings} />

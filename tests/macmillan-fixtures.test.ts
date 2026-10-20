@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadFixture } from './fixture-loader';
 import { extractQuestionsFromGenericDOM } from '../src/extractor/dom-scanner';
-import { inspectRcfPage } from '../src/extractor/rcf-inspector';
+import { inspectRcfPage, snapshotRcfActivity } from '../src/extractor/rcf-inspector';
 import { fillFormField } from '../src/filler/form-filler';
 import { MULTI_ANSWER_SEPARATOR } from '../src/types/question';
 
@@ -201,4 +201,25 @@ test('Macmillan word-box carousel - filler pages to the wanted word before picki
 
   assert.equal(result.success, true, result.error);
   assert.equal(gap8.getAttribute('data-filled'), 'take');
+});
+
+test('RCF snapshot - keeps the structure needed to support a new widget, drops noise and answer feedback', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dropdown-dialogue.html');
+  // Pretend the page carries the noise real pages have
+  doc.querySelector('li')!.insertAdjacentHTML('beforeend', '<svg><path d="M0 0"/></svg><img src="x.jpg"><div class="dev-feedback"><p>secret answer</p></div>');
+  doc.querySelector('select')!.setAttribute('style', 'display: none;');
+
+  const snapshot = snapshotRcfActivity(doc);
+
+  // Structure that a handler is written against
+  assert.match(snapshot.html, /data-rcfinteraction="dropDown"/);
+  assert.match(snapshot.html, /data-rcfid="dropDown_1"/);
+  assert.match(snapshot.html, /<option[^>]*>I spoke to John<\/option>/);
+  assert.match(snapshot.html, /id="ui-id-31"/);
+
+  // Noise and answer-revealing feedback are gone
+  assert.doesNotMatch(snapshot.html, /secret answer/);
+  assert.doesNotMatch(snapshot.html, /<svg|<img|style=/);
+  assert.equal(snapshot.truncated, false);
+  assert.ok(snapshot.html.length < 60_000);
 });

@@ -134,3 +134,36 @@ export function inspectRcfPage(doc: Document): RcfInspectionReport {
 
   return { url, activity, interactions, context, gapsOnPage, questionsDetected: questions.length, questionTypes, warnings };
 }
+
+export interface RcfSnapshot {
+  url: string;
+  /** Sanitized outerHTML of the activity: structure, classes, ids, data-*, aria-checked/role kept; noise removed. */
+  html: string;
+  originalLength: number;
+  truncated: boolean;
+}
+
+const SNAPSHOT_LIMIT = 150_000;
+
+/**
+ * Compact copy of the activity markup, safe to paste when a new question type needs support.
+ * Removes what only adds size or leaks answers (feedback, svg, scripts, styles, images, player internals).
+ */
+export function snapshotRcfActivity(doc: Document): RcfSnapshot {
+  const root = (doc.querySelector('.dev-rcf-content, [data-rcfxmlid]') as HTMLElement | null) || doc.body;
+  const clone = root.cloneNode(true) as HTMLElement;
+
+  clone.querySelectorAll('.feedback, .dev-feedback, svg, script, style, img, audio, source, .plyr__controls, noscript').forEach((n) => n.remove());
+  const noisyAttrs = ['style', 'tabindex', 'aria-labelledby', 'aria-activedescendant', 'aria-owns', 'aria-live', 'autocomplete', 'crossorigin', 'preload'];
+  for (const el of [clone, ...Array.from(clone.querySelectorAll('*'))]) {
+    for (const attr of noisyAttrs) el.removeAttribute(attr);
+  }
+
+  const html = clone.outerHTML.replace(/>\s+</g, '><').replace(/\s{2,}/g, ' ');
+  return {
+    url: doc.defaultView?.location?.href || '',
+    html: html.length > SNAPSHOT_LIMIT ? `${html.slice(0, SNAPSHOT_LIMIT)}<!-- truncated -->` : html,
+    originalLength: html.length,
+    truncated: html.length > SNAPSHOT_LIMIT,
+  };
+}

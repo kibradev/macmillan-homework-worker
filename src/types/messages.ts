@@ -8,7 +8,8 @@ export type ActionType =
   | 'HIGHLIGHT_FIELD'
   | 'PING_CONTENT_SCRIPT'
   | 'SYNC_RCF_SELECT'
-  | 'INSPECT_PAGE';
+  | 'INSPECT_PAGE'
+  | 'SNAPSHOT_PAGE';
 
 export interface BaseMessage {
   action: ActionType;
@@ -41,13 +42,18 @@ export interface InspectPageMessage extends BaseMessage {
   action: 'INSPECT_PAGE';
 }
 
+export interface SnapshotPageMessage extends BaseMessage {
+  action: 'SNAPSHOT_PAGE';
+}
+
 export type ExtensionRequestMessage =
   | DetectPlatformMessage
   | ScanQuestionsMessage
   | FillApprovedAnswerMessage
   | HighlightFieldMessage
   | PingMessage
-  | InspectPageMessage;
+  | InspectPageMessage
+  | SnapshotPageMessage;
 
 export interface DetectPlatformResponse {
   success: boolean;

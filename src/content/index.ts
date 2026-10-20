@@ -1,7 +1,7 @@
 import { ExtensionRequestMessage } from '../types/messages';
 import { detectCurrentPlatform, getPlatformAdapter } from '../platform/registry';
 import { flashHighlight } from '../filler/form-filler';
-import { inspectRcfPage } from '../extractor/rcf-inspector';
+import { inspectRcfPage, snapshotRcfActivity } from '../extractor/rcf-inspector';
 
 // Signal script presence
 console.log('[StudyPilot] Content script initialized on:', window.location.href);
@@ -40,6 +40,10 @@ chrome.runtime.onMessage.addListener((message: ExtensionRequestMessage, _sender,
           filled: result.success,
           error: result.error,
         };
+      }
+
+      case 'SNAPSHOT_PAGE': {
+        return { success: true, snapshot: snapshotRcfActivity(document) };
       }
 
       case 'INSPECT_PAGE': {
