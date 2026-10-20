@@ -234,9 +234,19 @@ export function findGlossaryData(doc: Document | Element): string | undefined {
   return undefined;
 }
 
+/** Stack of the last exception swallowed by extractQuestionsFromGenericDOM (reported by the page inspector). */
+let lastScannerError: string | undefined;
+
+export function getLastScannerError(): string | undefined {
+  return lastScannerError;
+}
+
 export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
   const questions: Question[] = [];
   const listeningData = findListeningData(doc);
+  lastScannerError = undefined;
+
+  try {
 
   // Look for potential question container elements (including Macmillan specific classes and courseware components)
   const containerSelectors = [
@@ -275,7 +285,9 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
   ).filter((el, idx, arr) => arr.indexOf(el) === idx) as HTMLElement[];
 
   const macmillanSelects = dropDownWrappers.length > 0
-    ? dropDownWrappers.map((w) => (w.querySelector('select') as HTMLSelectElement | null) || (w.nextElementSibling as HTMLSelectElement | null)).filter(Boolean) as HTMLSelectElement[]
+    ? (dropDownWrappers
+        .map((w) => (w.querySelector('select') as HTMLSelectElement | null) || (w.nextElementSibling as HTMLSelectElement | null))
+        .filter((el) => !!el && el.tagName === 'SELECT') as HTMLSelectElement[])
     : Array.from(doc.querySelectorAll('select')).filter((s) => !s.closest('.example')) as HTMLSelectElement[];
 
   if (macmillanSelects.length > 0) {
@@ -741,6 +753,12 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       });
       index++;
     }
+  }
+
+  } catch (err) {
+    // Keep whatever was extracted before the failure instead of reporting an empty page
+    lastScannerError = (err as Error).stack || String(err);
+    console.warn('[StudyPilot] Scanner block failed, returning partial results:', err);
   }
 
   const glossaryText = findGlossaryData(doc);

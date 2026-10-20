@@ -274,3 +274,18 @@ test('Macmillan checkbox list - filler ticks the right chips in the right group'
   assert.deepEqual(state(2), ['true', 'false', 'false']);
   assert.deepEqual(state(3), ['true', 'false', 'true']);
 });
+
+test('Macmillan locating - finds the error words and survives an empty dropDown wrapper on the page', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-locating-empty-dropdown.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 2);
+  assert.deepEqual(qs.map((q) => q.type), ['fill_in_the_blank', 'fill_in_the_blank']);
+  assert.match(qs[0].promptText, /Incorrect word: "am not liking"/);
+  assert.match(qs[1].promptText, /Incorrect word: "check"/);
+
+  const report = inspectRcfPage(doc);
+  assert.equal(report.interactions.find((i) => i.type === 'locating')?.status, 'supported');
+  assert.equal(report.questionsDetected, 2);
+  assert.ok(!report.warnings.some((w) => w.includes('Scanner')), report.warnings.join('; '));
+});

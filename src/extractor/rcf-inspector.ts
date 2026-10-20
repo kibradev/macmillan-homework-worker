@@ -1,4 +1,4 @@
-import { extractQuestionsFromGenericDOM, findGlossaryData, findListeningData } from './dom-scanner';
+import { extractQuestionsFromGenericDOM, findGlossaryData, findListeningData, getLastScannerError } from './dom-scanner';
 
 /**
  * Macmillan RCF tags every interactive widget with `data-rcfinteraction="<type>"`.
@@ -93,6 +93,11 @@ export function inspectRcfPage(doc: Document): RcfInspectionReport {
     questions = extractQuestionsFromGenericDOM(doc);
   } catch (err) {
     warnings.push(`Scanner threw: ${(err as Error).message}`);
+  }
+  const scannerError = getLastScannerError();
+  if (scannerError) {
+    // First stack frames are enough to locate the failing block
+    warnings.push(`Scanner block failed (partial results kept): ${scannerError.split('\n').slice(0, 4).join(' | ')}`);
   }
 
   const questionTypes: Record<string, number> = {};
