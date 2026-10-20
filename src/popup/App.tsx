@@ -304,6 +304,43 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleDiagnose = async () => {
+    setBanner(null);
+    const tabId = await getActiveTabId();
+    if (!tabId || !(await ensureContentScriptInjected(tabId))) {
+      setBanner({ type: 'warning', text: 'Aktif sekme bulunamadý veya içerik betiði yüklenemedi.' });
+      return;
+    }
+
+    try {
+      // Which frames actually contain Macmillan RCF widgets?
+      const frameResults = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        func: () => document.querySelectorAll('[data-rcfinteraction]').length,
+      });
+      const frameIds = frameResults.filter((r) => (r.result as number) > 0).map((r) => r.frameId);
+      if (frameIds.length === 0) frameIds.push(0);
+
+      const reports = [];
+      for (const frameId of frameIds) {
+        await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ['content.js'] }).catch(() => {});
+        const res = await chrome.tabs.sendMessage(tabId, { action: 'INSPECT_PAGE' }, { frameId }).catch(() => null);
+        if (res?.success) reports.push({ frameId, ...res.report });
+      }
+
+      await navigator.clipboard.writeText(JSON.stringify(reports, null, 2));
+      const warnings = reports.flatMap((r) => r.warnings as string[]);
+      setBanner({
+        type: warnings.length ? 'warning' : 'success',
+        text: warnings.length
+          ? `Taný raporu panoya kopyalandý. Uyarý: ${warnings[0]}${warnings.length > 1 ? ` (+${warnings.length - 1})` : ''}`
+          : `Taný raporu panoya kopyalandý (${reports.length} frame). Sorun bulunmadý.`,
+      });
+    } catch (err) {
+      setBanner({ type: 'error', text: `Taný raporu alýnamadý: ${(err as Error).message}` });
+    }
+  };
+
   const handleAutoPilot = async () => {
     if (!settings) return;
     const providerConfig = getActiveProviderConfig(settings);
@@ -707,6 +744,7 @@ export const App: React.FC = () => {
           onOpenSettings={() => setActiveTab('settings')}
           onClear={handleClear}
           onAutoPilot={handleAutoPilot}
+          onDiagnose={handleDiagnose}
         />
       ) : (
         <SettingsTab settings={settings} onSaveSettings={handleSaveSettings} />

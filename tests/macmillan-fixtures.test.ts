@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadFixture } from './fixture-loader';
 import { extractQuestionsFromGenericDOM } from '../src/extractor/dom-scanner';
+import { inspectRcfPage } from '../src/extractor/rcf-inspector';
 
 test('Macmillan dropdown dialogue - extracts every dropDown with full sentence and speaker context', () => {
   const doc = loadFixture('tests/fixtures/macmillan-dropdown-dialogue.html');
@@ -41,4 +42,28 @@ test('Macmillan drag & drop word box - numbers gaps sharing a sentence and passe
   // Whole dialogue and the single-use rule are passed as context
   assert.match(qs[4].contextText ?? '', /Hi Christina!/);
   assert.match(qs[4].contextText ?? '', /only once/);
+});
+
+test('RCF inspector - reports supported widgets and matches gap count to detected questions', () => {
+  const dd = inspectRcfPage(loadFixture('tests/fixtures/macmillan-dropdown-dialogue.html'));
+  assert.deepEqual(
+    dd.interactions.map((i) => [i.type, i.count, i.status]).sort(),
+    [['collapsibleList', 1, 'container'], ['dropDown', 4, 'supported']]
+  );
+  assert.equal(dd.gapsOnPage, 4);
+  assert.equal(dd.questionsDetected, 4);
+  assert.deepEqual(dd.warnings, []);
+
+  const dnd = inspectRcfPage(loadFixture('tests/fixtures/macmillan-dragdrop-wordbox.html'));
+  assert.equal(dnd.interactions.find((i) => i.type === 'complexDroppable')?.count, 5);
+  assert.equal(dnd.questionsDetected, 5);
+});
+
+test('RCF inspector - flags unsupported widgets with a sanitized sample', () => {
+  const report = inspectRcfPage(loadFixture('tests/fixtures/unknown-interaction.html'));
+  const sortable = report.interactions.find((i) => i.type === 'sortable');
+  assert.equal(sortable?.status, 'UNSUPPORTED');
+  assert.match(sortable?.sampleHtml ?? '', /<li>one<\/li>/);
+  assert.doesNotMatch(sortable?.sampleHtml ?? '', /secret answer/);
+  assert.ok(report.warnings.some((w) => w.includes('sortable')));
 });

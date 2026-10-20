@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowDownToLine, CheckCheck, Loader2, Play, RefreshCw, Sparkles, Zap } from 'lucide-react';
+import { ArrowDownToLine, CheckCheck, ClipboardList, Loader2, Play, RefreshCw, Sparkles, Zap } from 'lucide-react';
 import { AnswerReviewItem } from '../../types/answer';
 import { QuestionCard } from './QuestionCard';
 
@@ -20,6 +20,7 @@ interface ScannerTabProps {
   onOpenSettings: () => void;
   onClear?: () => void;
   onAutoPilot: () => void;
+  onDiagnose?: () => void;
 }
 
 export const ScannerTab: React.FC<ScannerTabProps> = ({
@@ -39,6 +40,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
   onOpenSettings,
   onClear,
   onAutoPilot,
+  onDiagnose,
 }) => {
   const approvedCount = items.filter((i) => i.approved).length;
   const suggestionsCount = items.filter((i) => !!i.suggestion).length;
@@ -81,6 +83,17 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
           </>
         )}
       </button>
+
+      {onDiagnose && (
+        <button
+          className="btn btn-secondary"
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+          onClick={onDiagnose}
+          title="Sayfadaki Macmillan bileþenlerini analiz edip raporu panoya kopyalar"
+        >
+          <ClipboardList size={14} /> Taný Raporu (panoya kopyala)
+        </button>
+      )}
 
       {/* Secondary granular action row */}
       <div style={{ display: 'flex', gap: '8px' }}>
