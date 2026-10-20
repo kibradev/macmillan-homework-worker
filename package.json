@@ -8,7 +8,7 @@
     "dev": "vite build --watch",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/core.test.ts tests/macmillan-fixtures.test.ts",
+    "test": "tsx --test tests/core.test.ts tests/macmillan-fixtures.test.ts tests/gemini-fallback.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
