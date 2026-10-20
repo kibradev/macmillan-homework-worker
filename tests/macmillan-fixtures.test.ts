@@ -500,3 +500,143 @@ test('Macmillan choice answers - an exact option wins over a partial match ("No"
   assert.equal((await fillFormField(doc, qs[0], 'Not enough information to say')).success, false);
   assert.equal(picked(1), 1, 'a non-matching answer must leave the previous choice alone');
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Ordering (jQuery UI sortable)
+
+/** Stand-in for a sortable: items sit in a row (100px each); dropping a dragged item re-inserts it beside the nearest one. */
+function makeSortable(doc: Document) {
+  doc.querySelectorAll('ul.rcfOrderingContainer').forEach((ul) => {
+    const rectOf = (li: Element) => {
+      const i = Array.from(li.parentElement!.children).indexOf(li);
+      return { left: i * 100, top: 0, width: 100, height: 30, right: i * 100 + 100, bottom: 30, x: i * 100, y: 0, toJSON() {} } as DOMRect;
+    };
+    ul.querySelectorAll('li').forEach((li) => ((li as any).getBoundingClientRect = () => rectOf(li)));
+
+    let dragged: HTMLElement | null = null;
+    ul.addEventListener('mousedown', (e) => {
+      const li = (e.target as Element).closest('li') as HTMLElement | null;
+      dragged = li && !li.classList.contains('fixed') ? li : null; // fixed items cannot be dragged
+    });
+    doc.addEventListener('mouseup', (e) => {
+      if (!dragged) return;
+      const others = Array.from(ul.children).filter((c) => c !== dragged && !c.classList.contains('fixed')) as HTMLElement[];
+      const x = (e as MouseEvent).clientX;
+      const nearest = others.reduce((best, el) => {
+        const r = el.getBoundingClientRect();
+        const rb = best.getBoundingClientRect();
+        return Math.abs(r.left + r.width / 2 - x) < Math.abs(rb.left + rb.width / 2 - x) ? el : best;
+      });
+      const r = nearest.getBoundingClientRect();
+      if (x > r.left + r.width / 2) nearest.after(dragged);
+      else nearest.before(dragged);
+      dragged = null;
+    });
+  });
+}
+
+const sentence = (doc: Document, n: number) =>
+  Array.from(doc.querySelectorAll(`[data-rcfid="ordering_${n}"] li`)).map((li) => li.textContent!.trim());
+
+test('Macmillan ordering - words, fixed items and a selector per word; the answer key in the markup is never read', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-ordering.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 4);
+  assert.ok(qs.every((q) => q.type === 'ordering'));
+
+  // Words come in the jumbled DOM order, NOT in the authored order hidden in data-origindex
+  assert.deepEqual(qs[0].options?.map((o) => o.label), ['me', 'a', 'hand', 'mind', 'Would', 'you', 'giving']);
+  assert.match(qs[0].promptText, /me \/ a \/ hand \/ mind \/ Would \/ you \/ giving/);
+  assert.match(qs[0].promptText, /"\?" ends the sentence/);
+
+  // A fixed first word is announced and not offered as a movable word
+  assert.deepEqual(qs[2].options?.map((o) => o.label), ['you', "wouldn't", 'awesome', 'be', 'would', 'mind, that']);
+  assert.match(qs[2].promptText, /"If" is the first word; "\." ends the sentence/);
+
+  // The same word twice ("you ... you") gives two separate options
+  assert.equal(qs[1].options?.filter((o) => o.label === 'you').length, 2);
+
+  // item_N repeats in every list: selectors must resolve to exactly one element, in their own list
+  qs.forEach((q, i) => {
+    for (const o of q.options ?? []) {
+      assert.equal(doc.querySelectorAll(o.elementSelector!).length, 1, o.elementSelector);
+      assert.ok(doc.querySelector(o.elementSelector!)?.closest(`[data-rcfid="ordering_${i + 1}"]`));
+    }
+  });
+
+  const text = JSON.stringify(qs);
+  assert.doesNotMatch(text, /origindex|showanswer|data-rank|user-answer/);
+
+  const report = inspectRcfPage(doc);
+  assert.equal(report.interactions.find((i) => i.type === 'ordering')?.status, 'supported');
+  assert.equal(report.questionsDetected, 4);
+  assert.deepEqual(report.warnings, []);
+});
+
+test('Macmillan ordering - the filler drags every word into place and leaves fixed items alone', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-ordering.html');
+  makeSortable(doc);
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal((await fillFormField(doc, qs[0], ['Would', 'you', 'mind', 'giving', 'me', 'a', 'hand'].join(MULTI_ANSWER_SEPARATOR))).success, true);
+  assert.deepEqual(sentence(doc, 1), ['Would', 'you', 'mind', 'giving', 'me', 'a', 'hand', '?']);
+
+  // A repeated word: both "you" elements end up in their own slot
+  const dup = await fillFormField(doc, qs[1], ['Do', 'you', 'think', 'you', 'could', 'help', 'me', 'out'].join(' || '));
+  assert.equal(dup.success, true, dup.error);
+  assert.deepEqual(sentence(doc, 2), ['Do', 'you', 'think', 'you', 'could', 'help', 'me', 'out', '?']);
+
+  // A fixed first word stays first; "mind, that" is one item; typographic/case differences from the AI are fine
+  const fixed = await fillFormField(doc, qs[2], ['You', 'wouldn’t', 'MIND, THAT', 'would', 'be', 'awesome'].join(' || '));
+  assert.equal(fixed.success, true, fixed.error);
+  assert.deepEqual(sentence(doc, 3), ['If', 'you', "wouldn't", 'mind, that', 'would', 'be', 'awesome', '.']);
+});
+
+test('Macmillan ordering - an answer that does not fit the words is refused and the list is left untouched', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-ordering.html');
+  makeSortable(doc);
+  const qs = extractQuestionsFromGenericDOM(doc);
+  const before = sentence(doc, 4);
+
+  const tooShort = await fillFormField(doc, qs[3], 'I || need || a');
+  assert.equal(tooShort.success, false);
+  assert.match(tooShort.error ?? '', /4 kelime bekleniyordu ama cevapta 3 var/);
+
+  const stranger = await fillFormField(doc, qs[3], 'I || need || a || banana');
+  assert.equal(stranger.success, false);
+  assert.match(stranger.error ?? '', /"banana" listedeki kelimelerden biri değil/);
+
+  assert.deepEqual(sentence(doc, 4), before);
+});
+
+test('Macmillan ordering - a list that ignores the drag is reported as a failure, not as success', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-ordering.html'); // no sortable behind it: nothing moves
+  doc.querySelectorAll('ul.rcfOrderingContainer li').forEach((li) => ((li as any).getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 30 })));
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  const result = await fillFormField(doc, qs[3], 'I || need || a || favour');
+
+  assert.equal(result.success, false);
+  assert.match(result.error ?? '', /Kelimeler sürüklenemedi\. Şu anki sıra: need I a favour \./);
+});
+
+test('Mixed activity - question ids stay unique when several kinds of question share a page', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-ordering.html');
+  // A dropdown gap next to the ordering lists: both blocks count from 1 on their own
+  doc
+    .querySelector('.mm_interactive')!
+    .insertAdjacentHTML(
+      'afterbegin',
+      '<p>She <span class="dropDown" data-rcfid="dropDown_1" data-rcfinteraction="dropDown"><select id="x-1"><option value=""></option><option value="a">went</option><option value="b">goed</option></select></span> home.</p>'
+    );
+
+  const qs = extractQuestionsFromGenericDOM(doc);
+  const ids = qs.map((q) => q.id);
+
+  assert.equal(qs.length, 5);
+  assert.equal(new Set(ids).size, ids.length, `duplicate ids: ${ids.join(', ')}`);
+  // Each id still resolves to the right question
+  assert.equal(qs.find((q) => q.type === 'dropdown')?.options?.[0].label, 'went');
+  assert.equal(qs.filter((q) => q.type === 'ordering').length, 4);
+});

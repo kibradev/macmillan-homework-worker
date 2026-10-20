@@ -105,6 +105,126 @@ export function findOptionIndex(options: ArrayLike<{ value: string; text: string
   return partial ? partial.index : -1;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Drags `item` onto the place of `destination` with real mouse events (mousedown, a few mousemoves, mouseup):
+ * what a jQuery UI sortable listens to. The pointer ends slightly past the destination's centre so it swaps.
+ */
+async function dragOntoItem(item: HTMLElement, destination: HTMLElement): Promise<void> {
+  const doc = item.ownerDocument;
+  const view = (doc.defaultView || window) as any;
+  item.scrollIntoView?.({ block: 'center', inline: 'center' });
+
+  const centre = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+  };
+  const from = centre(item);
+  const to = centre(destination);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const end = {
+    x: to.x + (horizontal ? Math.sign(dx) * to.w * 0.25 : 0),
+    y: to.y + (horizontal ? 0 : Math.sign(dy) * to.h * 0.25),
+  };
+
+  const fire = (target: EventTarget, type: string, point: { x: number; y: number }, buttons: number) =>
+    target.dispatchEvent(
+      new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view,
+        clientX: point.x,
+        clientY: point.y,
+        screenX: point.x,
+        screenY: point.y,
+        button: 0,
+        buttons,
+      })
+    );
+
+  item.focus?.();
+  fire(item, 'mousedown', from, 1);
+  await sleep(30);
+  const steps = 8;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    fire(doc, 'mousemove', { x: from.x + (end.x - from.x) * t, y: from.y + (end.y - from.y) * t }, 1);
+    await sleep(25);
+  }
+  fire(doc, 'mouseup', end, 0);
+  await sleep(150);
+}
+
+/**
+ * Puts the words of an ordering question in the order given by the answer ("Would || you || mind || ...").
+ * Fixed items (punctuation, a fixed first word) keep their slots. Every drag is verified by reading the list back,
+ * so a sortable that ignores the events is reported instead of silently "succeeding".
+ */
+async function fillOrdering(
+  doc: Document,
+  question: Question,
+  approvedAnswer: string
+): Promise<{ success: boolean; error?: string }> {
+  const selector = question.fields[0]?.selector || question.metadata?.containerSelector || '';
+  const container = selector ? findDeepElement(doc, selector) : null;
+  const list = container?.querySelector('ul') as HTMLElement | null;
+  if (!container || !list) {
+    return { success: false, error: `Sıralama listesi bulunamadı (soru ${question.index}).` };
+  }
+
+  const itemsNow = () => Array.from(list.children).filter((node) => node.matches('li')) as HTMLElement[];
+  const isFixed = (li: HTMLElement) => li.classList.contains('fixed') || li.getAttribute('data-fixed') === 'y';
+  const wordOf = (li: HTMLElement) => normalizeOptionText(li.getAttribute('data-ordervalue') || li.textContent || '');
+  // Items are identified by their rcfid, fixed ones by their (never changing) slot, so a re-rendered node is still found
+  const keyOf = (li: HTMLElement, index: number) => (!isFixed(li) && li.getAttribute('data-rcfid')) || `fixed@${index}`;
+
+  const wanted = approvedAnswer
+    .split('||')
+    .map((part) => normalizeOptionText(part))
+    .filter(Boolean);
+  const movable = itemsNow().filter((li) => !isFixed(li));
+  if (wanted.length !== movable.length) {
+    return { success: false, error: `${movable.length} kelime bekleniyordu ama cevapta ${wanted.length} var.` };
+  }
+
+  // Match each wanted word to a distinct element: the same word can appear twice ("you ... you")
+  const pool = [...movable];
+  const desiredKeys: string[] = [];
+  for (const word of wanted) {
+    const at = pool.findIndex((li) => wordOf(li) === word);
+    if (at < 0) return { success: false, error: `"${word}" listedeki kelimelerden biri değil.` };
+    desiredKeys.push(keyOf(pool.splice(at, 1)[0], -1));
+  }
+
+  let nextWord = 0;
+  const targetKeys = itemsNow().map((li, index) => (isFixed(li) ? keyOf(li, index) : desiredKeys[nextWord++]));
+  const currentKeys = () => itemsNow().map(keyOf);
+  const inOrder = () => currentKeys().every((key, index) => key === targetKeys[index]);
+  const itemWithKey = (key: string) => itemsNow().find((li, index) => keyOf(li, index) === key);
+
+  for (let pass = 0; pass < 3 && !inOrder(); pass++) {
+    for (let position = 0; position < targetKeys.length; position++) {
+      const now = itemsNow();
+      if (keyOf(now[position], position) === targetKeys[position]) continue;
+      const item = itemWithKey(targetKeys[position]);
+      if (item) await dragOntoItem(item, now[position]);
+    }
+  }
+
+  if (inOrder()) {
+    flashHighlight(container);
+    return { success: true };
+  }
+  return {
+    success: false,
+    error: `Kelimeler sürüklenemedi. Şu anki sıra: ${itemsNow().map((li) => li.textContent?.trim()).join(' ')}`,
+  };
+}
+
 /** Ticks every option named in a multiple_select answer ("A || B || C"); options already ticked are left alone. */
 async function fillMultiSelect(
   doc: Document,
@@ -167,6 +287,11 @@ export async function fillFormField(
   // Tick-box groups take several answers at once and have their own flow
   if (question.type === 'multiple_select') {
     return fillMultiSelect(doc, question, approvedAnswer);
+  }
+
+  // Word-ordering lists are rearranged by dragging
+  if (question.type === 'ordering') {
+    return fillOrdering(doc, question, approvedAnswer);
   }
 
   // 1. If this is a Dropdown question, handle select element directly!

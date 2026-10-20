@@ -25,7 +25,11 @@ RULES:
    - suggestedAnswer must list the exact text of EVERY correct option, separated by " || " (space, two pipes, space).
    - If selectCount is given, return exactly that many options.
    - Example: "Mark is happy. || Lucy is surprised. || Maria hopes he succeeds."
-7. Return your response as a valid JSON object strictly matching this schema:
+7. For ordering questions (put words in the correct order):
+   - suggestedAnswer lists EVERY movable word exactly once, exactly as given (repeated words repeated), in the correct order,
+     separated by " || " (space, two pipes, space). Fixed items named in the prompt are not part of the answer.
+   - Example: "Would || you || mind || giving || me || a || hand"
+8. Return your response as a valid JSON object strictly matching this schema:
 {
   "suggestions": [
     {
@@ -36,7 +40,7 @@ RULES:
     }
   ]
 }
-8. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
+9. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
 
 export function buildQuestionsPrompt(questions: Question[]): string {
   // A reading text, transcript or full email is identical for every question of an activity. Send it once

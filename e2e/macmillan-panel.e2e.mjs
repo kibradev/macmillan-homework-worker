@@ -34,15 +34,18 @@ const gap = (n, texts) =>
 
 const PLAYER = `<!doctype html><html><head><meta charset="utf-8"><title>rcf-player</title>
 <script src="/vendor/jquery.js"></script><script src="/vendor/jquery-ui.js"></script>
-<style>.ui-selectmenu-button{display:inline-block;min-width:130px;border:1px solid #999;padding:2px 8px;margin:0 4px}</style></head>
+<style>.ui-selectmenu-button{display:inline-block;min-width:130px;border:1px solid #999;padding:2px 8px;margin:0 4px}.rcfOrderingContainer{list-style:none;display:flex;gap:8px;padding:12px 0;margin:0}.orderingItem{padding:8px 14px;border:2px solid #3C6ED2;border-radius:4px;background:#fff;cursor:grab;user-select:none}.orderingItem.fixed{border-color:#999;cursor:default}</style></head>
 <body id="player-body"><div class="dev-rcf-content activity mm_C04" data-interactions="rcfDropDown">
 <form onsubmit="return false"><div class="rubricContainer"><div class="rubric"><div class="rubricBody"><p>Choose the correct option to complete the email.</p></div></div></div>
 <div class="main"><div class="block mm_interactive"><div class="block mm_blockText">
 <p>Subject: Customer survey</p>
 <p>I've ${gap(1, ['solved', 'analysed', 'caused'])} the data from our survey. There are problems we need to ${gap(2, ['come up with', 'solve', 'cause'])}.</p>
 <p>I would like us to meet this week and ${gap(3, ['solve', 'deal with', 'agree on'])} some solutions.</p>
-</div></div></div></form></div>
-<script>$('select').selectmenu();</script></body></html>`;
+</div></div></div>
+<div class="block mm_interactive"><div class="orderingContainer" data-rcfinteraction="ordering" data-rcfid="ordering_1" aria-orientation="horizontal"><span class="ordering horizontal"><ul class="ordering rcfOrderingContainer ui-sortable">
+<li data-rcfid="item_5" class="orderingItem" data-ordervalue="me">me</li><li data-rcfid="item_6" class="orderingItem" data-ordervalue="a">a</li><li data-rcfid="item_7" class="orderingItem" data-ordervalue="hand">hand</li><li data-rcfid="item_3" class="orderingItem" data-ordervalue="mind">mind</li><li data-rcfid="item_1" class="orderingItem" data-ordervalue="Would">Would</li><li data-rcfid="item_2" class="orderingItem" data-ordervalue="you">you</li><li data-rcfid="item_4" class="orderingItem" data-ordervalue="giving">giving</li><li class="suffix fixed orderingItem" data-fixed="y">?</li>
+</ul></span></div></div></form></div>
+<script>$('select').selectmenu(); $('ul.rcfOrderingContainer').sortable({ items: '> li:not(.fixed)', axis: 'x' });</script></body></html>`;
 
 const TOP = `<!doctype html><html><head><meta charset="utf-8"><title>Macmillan Education Everywhere (test shell)</title>
 <style>body{margin:0;font-family:'Open Sans',Arial,sans-serif;background:#ECF1FB}iframe{width:100%;height:520px;border:0;background:#fff}</style></head>
@@ -109,10 +112,13 @@ try {
     aiRequests.push(prompt);
     const start = prompt.lastIndexOf('[\n  {');
     const questions = JSON.parse(prompt.slice(start));
-    // The "AI" always picks the second option of every question
+    // The "AI" picks the second option of every gap, and sorts the words of an ordering question alphabetically
     const suggestions = questions.map((q) => ({
       questionId: q.questionId,
-      suggestedAnswer: q.options[1].label,
+      suggestedAnswer:
+        q.type === 'ordering'
+          ? q.options.map((o) => o.label).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())).join(' || ')
+          : q.options[1].label,
       confidence: 0.9,
       explanation: 'e2e',
     }));
@@ -188,13 +194,24 @@ try {
 
   // ---- the panel: open it, look at the list ------------------------------------------------------------------
   await shadow(`(r) => r.querySelector('.sp-toggle').click()`);
+  const order = await frame.evaluate(() => Array.from(document.querySelectorAll('[data-rcfid="ordering_1"] li')).map((li) => li.textContent));
+  check(
+    'the ordering list was rearranged by real drags on the real jQuery UI sortable (fixed "?" stays last)',
+    JSON.stringify(order) === JSON.stringify(['a', 'giving', 'hand', 'me', 'mind', 'Would', 'you', '?']),
+    order.join(' ')
+  );
+  const ids = aiRequests[0] ? [...aiRequests[0].matchAll(/"questionId": "([^"]+)"/g)].map((m) => m[1]) : [];
+  check('every question in the prompt has its own id (dropdowns and ordering on one page)', ids.length === 4 && new Set(ids).size === 4, ids.join(', '));
+
   const panel = await shadow(`(r) => ({ rows: r.querySelectorAll('.sp-item').length, marks: Array.from(r.querySelectorAll('.sp-mark')).map((m) => m.textContent), answers: Array.from(r.querySelectorAll('.sp-answer')).map((i) => i.value) })`);
-  check('the panel lists the 3 questions, all marked as filled', panel.rows === 3 && panel.marks.every((m) => m === '✓'), JSON.stringify(panel));
+  check('the panel lists the 4 questions, all marked as filled', panel.rows === 4 && panel.marks.every((m) => m === '✓'), JSON.stringify(panel));
   await page.screenshot({ path: join(shotDir, 'e2e-3-panel.png') });
 
   // ---- a second page: the old answers must not be reused ------------------------------------------------------
   await frame.evaluate(() => {
     document.querySelectorAll('select').forEach((s) => { s.selectedIndex = 0; $(s).selectmenu('refresh'); });
+    const ul = document.querySelector('[data-rcfid="ordering_1"] ul');
+    Array.from(ul.querySelectorAll('li:not(.fixed)')).reverse().forEach((li) => ul.insertBefore(li, ul.querySelector('li.fixed')));
   });
   await shadow(`(r) => r.querySelector('.sp-close').click()`);
   await shadow(`(r) => r.querySelector('.sp-fast').click()`);
@@ -202,6 +219,8 @@ try {
   check('clicking again scans again (2 AI requests in total)', aiRequests.length === 2, `${aiRequests.length}`);
   const again = await frame.evaluate(() => Array.from(document.querySelectorAll('select')).map((s) => s.options[s.selectedIndex].text));
   check('and fills the cleared gaps again', JSON.stringify(again) === JSON.stringify(expected), JSON.stringify(again));
+  const orderAgain = await frame.evaluate(() => Array.from(document.querySelectorAll('[data-rcfid="ordering_1"] li')).map((li) => li.textContent).join(' '));
+  check('and puts the shuffled words back in order', orderAgain === 'a giving hand me mind Would you ?', orderAgain);
 } catch (err) {
   console.log('E2E ERROR:', err);
   exitCode = 1;

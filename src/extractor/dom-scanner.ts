@@ -558,6 +558,61 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     }
   }
 
+  // 2b. FIRST-CLASS MACMILLAN ORDERING: words to put in the correct order (a jQuery UI sortable list).
+  // The markup also carries the authored order (data-origindex / data-showanswer / data-rank). That is the answer key,
+  // so it is deliberately never read: the AI solves the sentence like any other question.
+  const orderingContainers = Array.from(doc.querySelectorAll('[data-rcfinteraction="ordering"]')) as HTMLElement[];
+  let orderIndex = 1;
+  for (const container of orderingContainers) {
+    const list = container.querySelector('ul') as HTMLElement | null;
+    if (!list) continue;
+    const entries = Array.from(list.children).filter((node) => node.matches('li')) as HTMLElement[];
+    const wordOf = (li: HTMLElement) => cleanText(li.getAttribute('data-ordervalue') || li.textContent);
+    const isFixed = (li: HTMLElement) => li.classList.contains('fixed') || li.getAttribute('data-fixed') === 'y';
+    const movable = entries.filter((li) => !isFixed(li));
+    if (movable.length < 2) continue;
+
+    const fixedNotes = entries
+      .map((li, position) => ({ li, position }))
+      .filter(({ li }) => isFixed(li))
+      .map(({ li, position }) =>
+        position === 0
+          ? `"${wordOf(li)}" is the first word`
+          : position === entries.length - 1
+            ? `"${wordOf(li)}" ends the sentence`
+            : `"${wordOf(li)}" stays in place at position ${position + 1}`
+      );
+
+    const promptText =
+      `Put these words in the correct order to form a sentence or question (use every word exactly once): ${movable.map(wordOf).join(' / ')}.` +
+      (fixedNotes.length ? ` Fixed items, not part of your answer: ${fixedNotes.join('; ')}.` : '') +
+      ' Answer with the words in the right order, separated by " || ".';
+
+    questions.push({
+      id: `q_${orderIndex}`,
+      index: orderIndex,
+      type: 'ordering',
+      promptText,
+      options: movable.map((li, i) => ({
+        id: `opt_${orderIndex}_${i}`,
+        label: wordOf(li),
+        value: li.getAttribute('data-rcfid') || wordOf(li),
+        elementSelector: getUniqueCssSelector(li),
+      })),
+      fields: [
+        {
+          id: `field_ordering_${orderIndex}`,
+          selector: getUniqueCssSelector(container),
+          fieldType: 'input',
+          name: container.getAttribute('data-rcfid') || `ordering_${orderIndex}`,
+          label: 'Ordering',
+        },
+      ],
+      metadata: { containerSelector: getUniqueCssSelector(container) },
+    });
+    orderIndex++;
+  }
+
   // 2. FIRST-CLASS MACMILLAN DRAG & DROP / CLICK-AND-STICK (.clickAndStickable, .dragTarget)
   const wordBoxEl = doc.querySelector('.wordBox') as HTMLElement | null;
   const wordBankOptions: AnswerOption[] = [];
@@ -851,6 +906,16 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     // Keep whatever was extracted before the failure instead of reporting an empty page
     lastScannerError = (err as Error).stack || String(err);
     console.warn('[StudyPilot] Scanner block failed, returning partial results:', err);
+  }
+
+  // Each block numbers its questions from 1, so a page that mixes kinds of question would repeat ids (q_1 twice)
+  // and the AI's answers could not be told apart. Keep ids unique; `index` stays the per-kind number the filler relies on.
+  const seenIds = new Set<string>();
+  for (const q of questions) {
+    let id = q.id;
+    for (let n = 2; seenIds.has(id); n++) id = `${q.id}_${n}`;
+    q.id = id;
+    seenIds.add(id);
   }
 
   const glossaryText = findGlossaryData(doc);

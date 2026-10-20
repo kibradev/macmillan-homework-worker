@@ -13,7 +13,7 @@ import {
  */
 
 /** Interaction types the scanner + filler know how to handle. */
-export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect', 'checkboxItemSelect']);
+export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect', 'checkboxItemSelect', 'ordering']);
 
 /**
  * Widgets that hold content but are never answered: layout wrappers, the audio player, the glossary box.
@@ -22,7 +22,7 @@ export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable
 export const PASSIVE_RCF_INTERACTIONS = new Set(['collapsibleList', 'collapsibleBlock', 'audioElement', 'slidingBlock']);
 
 /** Interactions that each correspond to exactly one answerable gap. */
-const GAP_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect', 'checkboxItemSelect']);
+const GAP_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect', 'checkboxItemSelect', 'ordering']);
 
 export interface RcfInteractionSummary {
   type: string;
