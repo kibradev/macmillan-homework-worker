@@ -210,6 +210,33 @@ export function findListeningData(doc: Document | Element): { isListening: boole
   return { isListening, audioUrl, transcript };
 }
 
+/**
+ * The reading passage of a comprehension activity. Macmillan often hides it in a sliding panel ("Read" button) or a
+ * separate text block, so it is not part of any question. Text blocks that hold the gaps themselves are skipped:
+ * gap-fill questions already carry their own passage.
+ */
+export function findReadingText(doc: Document | Element): string | undefined {
+  const blocks = Array.from(doc.querySelectorAll('.slidingContent, .mm_blockText, .readingText, .reading-text, .passage'));
+  const parts: string[] = [];
+
+  for (const block of blocks) {
+    if (block.closest('.wordBox')) continue;
+    if (blocks.some((other) => other !== block && other.contains(block))) continue; // the outer block already covers it
+    if (block.querySelector('[data-rcfinteraction]:not([data-ignorenextanswer="y"])')) continue; // a gap-fill passage
+
+    const clone = block.cloneNode(true) as HTMLElement;
+    clone
+      .querySelectorAll('.feedback, .dev-feedback, .slidingHeader, .slidingButton, .slidingButtonClose, button, svg, script, style, audio, img')
+      .forEach((n) => n.remove());
+
+    const paragraphs = Array.from(clone.querySelectorAll('p')).map((p) => cleanText(p.textContent)).filter(Boolean);
+    const text = paragraphs.length > 1 ? paragraphs.join('\n') : cleanText(clone.textContent);
+    if (text.length >= 200) parts.push(text);
+  }
+
+  return parts.length > 0 ? parts.join('\n\n').slice(0, 8000) : undefined;
+}
+
 export function findGlossaryData(doc: Document | Element): string | undefined {
   const glossarySelectors = [
     '.collapsibleContainer',
@@ -827,6 +854,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
   }
 
   const glossaryText = findGlossaryData(doc);
+  const readingText = findReadingText(doc);
 
   // Annotate all questions with listening context and glossary definitions if present
   for (const q of questions) {
@@ -845,6 +873,10 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       } else if (listeningData.isListening) {
         contextParts.push(`[Note: Listening exercise. Audio: ${listeningData.audioUrl || 'in player'}]`);
       }
+    }
+
+    if (readingText && !contextParts.some((part) => part.includes(readingText.slice(0, 80)))) {
+      contextParts.push(`[Reading text]:\n${readingText}`);
     }
 
     if (glossaryText) {

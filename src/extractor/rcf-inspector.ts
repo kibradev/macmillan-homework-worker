@@ -1,4 +1,10 @@
-import { extractQuestionsFromGenericDOM, findGlossaryData, findListeningData, getLastScannerError } from './dom-scanner';
+import {
+  extractQuestionsFromGenericDOM,
+  findGlossaryData,
+  findListeningData,
+  findReadingText,
+  getLastScannerError,
+} from './dom-scanner';
 
 /**
  * Macmillan RCF tags every interactive widget with `data-rcfinteraction="<type>"`.
@@ -13,7 +19,7 @@ export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable
  * Widgets that hold content but are never answered: layout wrappers, the audio player, the glossary box.
  * Macmillan also flags such widgets itself with data-ignorenextanswer="y".
  */
-export const PASSIVE_RCF_INTERACTIONS = new Set(['collapsibleList', 'collapsibleBlock', 'audioElement']);
+export const PASSIVE_RCF_INTERACTIONS = new Set(['collapsibleList', 'collapsibleBlock', 'audioElement', 'slidingBlock']);
 
 /** Interactions that each correspond to exactly one answerable gap. */
 const GAP_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect', 'checkboxItemSelect']);
@@ -40,6 +46,7 @@ export interface RcfInspectionReport {
     transcriptPreview?: string;
     captionsButtonPresent: boolean;
     glossaryFound: boolean;
+    readingFound: boolean;
   };
   gapsOnPage: number;
   questionsDetected: number;
@@ -135,6 +142,7 @@ export function inspectRcfPage(doc: Document): RcfInspectionReport {
     transcriptPreview: listening.transcript?.slice(0, 200),
     captionsButtonPresent: !!doc.querySelector('.audioScriptButton, [data-plyr="rcf-captions"]'),
     glossaryFound: !!findGlossaryData(doc),
+    readingFound: !!findReadingText(doc),
   };
   if (context.isListening && !context.transcriptFound) {
     warnings.push(

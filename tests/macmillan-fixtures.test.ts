@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { loadFixture } from './fixture-loader';
 import { extractQuestionsFromGenericDOM } from '../src/extractor/dom-scanner';
 import { inspectRcfPage, snapshotRcfActivity } from '../src/extractor/rcf-inspector';
+import { buildQuestionsPrompt } from '../src/ai/base';
 import { fillFormField } from '../src/filler/form-filler';
 import { MULTI_ANSWER_SEPARATOR } from '../src/types/question';
 
@@ -404,4 +405,43 @@ test('Macmillan dropdown - the filler selects the real option, never the empty f
   const before = selectOf(qs[2]).selectedIndex;
   assert.equal((await fillFormField(doc, qs[2], 'banana split')).success, false);
   assert.equal(selectOf(qs[2]).selectedIndex, before);
+});
+
+test('Macmillan reading activity - the reading text (hidden in a sliding panel) is passed to the AI', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-reading-radio.html');
+  const [q] = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(q.type, 'multiple_choice');
+  assert.equal(q.promptText, "What is the writer's opinion?");
+  assert.equal(q.options?.length, 3);
+
+  const context = q.contextText ?? '';
+  assert.match(context, /^\[Reading text\]:/, `no reading text in context: ${JSON.stringify(context.slice(0, 80))}`);
+  assert.match(context, /three-quarters of all scientific research is published in English/);
+  assert.match(context, /which language should we discuss it\?!/);
+  // Paragraphs stay separate, and the panel's own buttons ("Read", "Close") are not part of the text
+  assert.match(context, /bad thing\?\nBut could the dominance of English/);
+  assert.doesNotMatch(context, /Close/);
+
+  const report = inspectRcfPage(doc);
+  assert.equal(report.context.readingFound, true);
+  assert.equal(report.interactions.find((i) => i.type === 'slidingBlock')?.status, 'passive');
+});
+
+test('AI prompt - a context shared by several questions is sent once, unique contexts stay with their question', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dropdown-email.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+  const prompt = buildQuestionsPrompt(qs);
+
+  // The whole email (4 questions share it) appears exactly once, in a shared block
+  assert.equal(prompt.split('Subject: Speedy Deliveries Customer Satisfaction Survey').length - 1, 1);
+  assert.match(prompt, /\[Shared context for questions q_1, q_2, q_3, q_4\]/);
+  assert.ok(qs.every((q) => prompt.includes(`"questionId": "${q.id}"`)));
+  assert.equal((prompt.match(/"context": null/g) ?? []).length, 4);
+
+  // A single question keeps its context inline (nothing to share)
+  const [only] = extractQuestionsFromGenericDOM(loadFixture('tests/fixtures/macmillan-reading-radio.html'));
+  const single = buildQuestionsPrompt([only]);
+  assert.doesNotMatch(single, /Shared context/);
+  assert.match(single, /"context": "\[Reading text\]:/);
 });

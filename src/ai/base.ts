@@ -17,6 +17,8 @@ RULES:
    - Example: For sentence "I get worried about how much time I spend online." -> If the error is "get", return "am getting".
 4. For listening comprehension exercises:
    - When an audio transcript or tapescript is provided in the question context, read it thoroughly to find the exact spoken facts and answers.
+   - For reading comprehension, a [Reading text] is provided in the context: answer strictly from what that text says,
+     not from general knowledge or by guessing what a writer might think.
    - If no transcript is provided, use all available contextual cues, grammar, and vocabulary clues in the prompt and surrounding sentence to deduce the most accurate answer.
 5. For true/false questions, output "True" or "False".
 6. For multiple_select questions (several options can be ticked):
@@ -37,20 +39,34 @@ RULES:
 8. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
 
 export function buildQuestionsPrompt(questions: Question[]): string {
+  // A reading text, transcript or full email is identical for every question of an activity. Send it once
+  // instead of repeating it per question: far fewer tokens and a clearer prompt.
+  const idsByContext = new Map<string, string[]>();
+  for (const q of questions) {
+    if (!q.contextText) continue;
+    idsByContext.set(q.contextText, [...(idsByContext.get(q.contextText) ?? []), q.id]);
+  }
+  const shared = Array.from(idsByContext.entries()).filter(([, ids]) => ids.length > 1);
+  const sharedTexts = new Set(shared.map(([text]) => text));
+
   const formattedQuestions = questions.map((q) => {
     return {
       questionId: q.id,
       index: q.index,
       type: q.type,
       promptText: q.promptText,
-      context: q.contextText || null,
+      context: q.contextText && !sharedTexts.has(q.contextText) ? q.contextText : null,
       options: q.options?.map((o) => ({ label: o.label, value: o.value })) || null,
       fieldsCount: q.fields.length,
       selectCount: q.metadata?.selectCount ?? null,
     };
   });
 
-  return `Please solve the following homework questions:\n\n${JSON.stringify(formattedQuestions, null, 2)}`;
+  const sharedBlock = shared
+    .map(([text, ids]) => `[Shared context for questions ${ids.join(', ')}]\n${text}\n`)
+    .join('\n');
+
+  return `Please solve the following homework questions:\n\n${sharedBlock ? `${sharedBlock}\n` : ''}${JSON.stringify(formattedQuestions, null, 2)}`;
 }
 
 export function parseAndValidateAIResponse(
