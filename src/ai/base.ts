@@ -1,5 +1,6 @@
 import { Question } from '../types/question';
 import { AnswerSuggestion } from '../types/answer';
+import { MULTI_ANSWER_SEPARATOR } from '../types/question';
 
 export const AI_SYSTEM_PROMPT = `You are StudyPilot, an expert educational homework assistant.
 Your goal is to solve academic exercises accurately and explain the reasoning step-by-step.
@@ -18,7 +19,11 @@ RULES:
    - When an audio transcript or tapescript is provided in the question context, read it thoroughly to find the exact spoken facts and answers.
    - If no transcript is provided, use all available contextual cues, grammar, and vocabulary clues in the prompt and surrounding sentence to deduce the most accurate answer.
 5. For true/false questions, output "True" or "False".
-6. Return your response as a valid JSON object strictly matching this schema:
+6. For multiple_select questions (several options can be ticked):
+   - suggestedAnswer must list the exact text of EVERY correct option, separated by " || " (space, two pipes, space).
+   - If selectCount is given, return exactly that many options.
+   - Example: "Mark is happy. || Lucy is surprised. || Maria hopes he succeeds."
+7. Return your response as a valid JSON object strictly matching this schema:
 {
   "suggestions": [
     {
@@ -29,7 +34,7 @@ RULES:
     }
   ]
 }
-7. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
+8. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
 
 export function buildQuestionsPrompt(questions: Question[]): string {
   const formattedQuestions = questions.map((q) => {
@@ -41,6 +46,7 @@ export function buildQuestionsPrompt(questions: Question[]): string {
       context: q.contextText || null,
       options: q.options?.map((o) => ({ label: o.label, value: o.value })) || null,
       fieldsCount: q.fields.length,
+      selectCount: q.metadata?.selectCount ?? null,
     };
   });
 
@@ -93,7 +99,9 @@ export function parseAndValidateAIResponse(
     }
 
     const question = questionMap.get(qId)!;
-    const answerStr = String(item.suggestedAnswer ?? item.answer ?? '').trim();
+    const rawAnswer = item.suggestedAnswer ?? item.answer ?? '';
+    // Models sometimes return a JSON array for multiple_select instead of a delimited string
+    const answerStr = (Array.isArray(rawAnswer) ? rawAnswer.map(String).join(MULTI_ANSWER_SEPARATOR) : String(rawAnswer)).trim();
     const confidenceNum = typeof item.confidence === 'number'
       ? Math.max(0, Math.min(1, item.confidence))
       : 0.85;

@@ -62,6 +62,11 @@ export function getUniqueCssSelector(el: Element): string {
   return parts.join(' > ');
 }
 
+/** Audio player controls (plyr seek/volume range inputs) look like form fields but are never answers. */
+export function isMediaControl(el: Element): boolean {
+  return el.matches('input[type="range"]') || !!el.closest('.plyr, .audioInterface, .activityAudioPlayerContainer');
+}
+
 export function cleanText(text: string | null | undefined): string {
   if (!text) return '';
   return text
@@ -374,7 +379,10 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
   }
 
   // 2. FIRST-CLASS MACMILLAN CUSTOM RADIO ITEM SELECT (.radioItemSelect, .radioItem, [class*="radioItemSelect"])
-  const radioSelectGroups = queryAllDeep(doc, '.radioItemSelect, [class*="radioItemSelect"], [class*="radioGroup"], .radioSelect');
+  const radioSelectGroups = queryAllDeep(
+    doc,
+    '.radioItemSelect, [class*="radioItemSelect"], [class*="radioGroup"], .radioSelect, .checkboxItemSelect, [class*="checkboxItemSelect"]'
+  );
   if (radioSelectGroups.length > 0 && questions.length === 0) {
     let rIndex = 1;
     for (const group of radioSelectGroups) {
@@ -385,18 +393,22 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       if (choiceItems.length > 0) {
         // Find parent sentence or preceding prompt
         const parentSentence = (group.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || group.parentElement || group;
+        const isCheckboxGroup = group.matches('.checkboxItemSelect, [class*="checkboxItemSelect"]') || group.getAttribute('data-rcfinteraction') === 'checkboxItemSelect';
         const clone = parentSentence.cloneNode(true) as HTMLElement;
-        clone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], button, [style*="display: none"]').forEach((n) => n.remove());
+        clone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], .checkboxItemSelect, [class*="checkboxItemSelect"], button, [style*="display: none"]').forEach((n) => n.remove());
         let promptText = cleanText(clone.textContent);
         if (!promptText) {
           // Macmillan keeps the question in a sibling <div class="prompt"> inside the same list item
           const item = group.closest('li, .item, .sentence') as HTMLElement | null;
           if (item) {
             const itemClone = item.cloneNode(true) as HTMLElement;
-            itemClone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], .feedback, .dev-feedback, button').forEach((n) => n.remove());
+            itemClone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], .checkboxItemSelect, [class*="checkboxItemSelect"], .feedback, .dev-feedback, button').forEach((n) => n.remove());
             promptText = cleanText(itemClone.textContent);
           }
         }
+        // The activity instructions (e.g. "Choose the 3 correct statements") often are the only prompt for a tick-box group
+        const rubricText = cleanText(doc.querySelector('.rubric, .rubricBody')?.textContent);
+        if (!promptText && isCheckboxGroup) promptText = rubricText;
         promptText = promptText || `Question #${rIndex}`;
 
         const options: AnswerOption[] = [];
@@ -414,9 +426,9 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
             fields.push({
               id: `field_${rIndex}_${cIdx}`,
               selector: getUniqueCssSelector(item),
-              fieldType: 'radio',
+              fieldType: isCheckboxGroup ? 'checkbox' : 'radio',
               name: group.id || `radio_${rIndex}`,
-              currentValue: item.classList.contains('selected') ? itemText : undefined,
+              currentValue: item.classList.contains('selected') || item.getAttribute('aria-checked') === 'true' ? itemText : undefined,
               label: itemText,
             });
           }
@@ -426,12 +438,14 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
           questions.push({
             id: `q_${rIndex}`,
             index: rIndex,
-            type: 'multiple_choice',
+            type: isCheckboxGroup ? 'multiple_select' : 'multiple_choice',
             promptText,
+            contextText: isCheckboxGroup && rubricText && rubricText !== promptText ? `[Instructions]: ${rubricText}` : undefined,
             options,
             fields,
             metadata: {
               containerSelector: getUniqueCssSelector(group),
+              selectCount: isCheckboxGroup ? parseInt(group.getAttribute('data-rcfrestrict') || '', 10) || undefined : undefined,
             },
           });
           rIndex++;
@@ -540,9 +554,9 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     let index = 1;
     for (const container of matchedContainers) {
       // Check if container has multiple text inputs (e.g. blog post gap-fill with 8 blanks)
-      const innerInputs = Array.from(
+      const innerInputs = (Array.from(
         container.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea')
-      ) as HTMLElement[];
+      ) as HTMLElement[]).filter((i) => !isMediaControl(i));
 
       // If container has multiple text inputs and NOT a single radio group, treat EACH input as an individual question!
       const isRadioGroup = innerInputs.length > 0 && innerInputs.every((i) => i instanceof HTMLInputElement && i.type === 'radio');
@@ -622,7 +636,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     const interactiveElements = queryAllDeep(
       doc,
       'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea, [contenteditable="true"], [role="textbox"], [role="radio"], [class*="blank-input"], [class*="gap-input"]'
-    );
+    ).filter((el) => !isMediaControl(el));
 
     // Group radio buttons by name
     const radioGroups = new Map<string, HTMLElement[]>();
@@ -779,9 +793,9 @@ function parseContainerIntoQuestion(
     promptText = cleanText(clone.textContent);
   }
 
-  const inputs = Array.from(
+  const inputs = (Array.from(
     container.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea')
-  ) as HTMLElement[];
+  ) as HTMLElement[]).filter((i) => !isMediaControl(i));
 
   const fields: FormFieldRef[] = [];
   const options: AnswerOption[] = [];

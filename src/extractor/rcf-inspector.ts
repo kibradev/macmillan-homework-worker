@@ -7,7 +7,7 @@ import { extractQuestionsFromGenericDOM, findGlossaryData, findListeningData } f
  */
 
 /** Interaction types the scanner + filler know how to handle. */
-export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect']);
+export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect', 'checkboxItemSelect']);
 
 /**
  * Widgets that hold content but are never answered: layout wrappers, the audio player, the glossary box.
@@ -16,7 +16,7 @@ export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable
 export const PASSIVE_RCF_INTERACTIONS = new Set(['collapsibleList', 'collapsibleBlock', 'audioElement']);
 
 /** Interactions that each correspond to exactly one answerable gap. */
-const GAP_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect']);
+const GAP_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect', 'checkboxItemSelect']);
 
 export interface RcfInteractionSummary {
   type: string;

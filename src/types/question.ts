@@ -4,7 +4,11 @@ export type QuestionType =
   | 'dropdown'
   | 'true_false'
   | 'matching'
+  | 'multiple_select'
   | 'unknown';
+
+/** Separates the option texts of a multiple_select answer, e.g. "Option A || Option C". */
+export const MULTI_ANSWER_SEPARATOR = ' || ';
 
 export interface AnswerOption {
   id: string;
@@ -39,5 +43,7 @@ export interface Question {
     audioTranscript?: string;
     isListening?: boolean;
     isInsideIframe?: boolean;
+    /** multiple_select: exact number of options the activity wants ticked (data-rcfrestrict). */
+    selectCount?: number;
   };
 }

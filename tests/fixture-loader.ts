@@ -16,9 +16,10 @@ export function loadFixture(path: string): Document {
   }
 
   const g = globalThis as any;
+  g.window = dom.window;
   g.CSS = { escape: (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, (c) => '\\' + c) };
   for (const k of Object.getOwnPropertyNames(dom.window)) {
-    if (/^(Node|Element|HTML\w*Element|ShadowRoot|Document|Event|MouseEvent|KeyboardEvent|MutationObserver)$/.test(k)) {
+    if (/^(Node|Element|HTML\w*Element|ShadowRoot|Document|Event|MouseEvent|KeyboardEvent|PointerEvent|InputEvent|MutationObserver)$/.test(k)) {
       g[k] = (dom.window as any)[k];
     }
   }

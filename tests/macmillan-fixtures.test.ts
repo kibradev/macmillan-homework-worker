@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { loadFixture } from './fixture-loader';
 import { extractQuestionsFromGenericDOM } from '../src/extractor/dom-scanner';
 import { inspectRcfPage } from '../src/extractor/rcf-inspector';
+import { fillFormField } from '../src/filler/form-filler';
+import { MULTI_ANSWER_SEPARATOR } from '../src/types/question';
 
 test('Macmillan dropdown dialogue - extracts every dropDown with full sentence and speaker context', () => {
   const doc = loadFixture('tests/fixtures/macmillan-dropdown-dialogue.html');
@@ -111,4 +113,52 @@ test('Macmillan listening radio questions - real prompt, unique per-group select
   assert.match(transcript, /Maria: Hey Lucy! How have you been\?\nLucy: Hi Maria!/);
   assert.doesNotMatch(transcript, /captions/i);
   assert.match(qs[0].contextText ?? '', /Glossary/i);
+});
+
+test('Macmillan checkbox group - one multiple_select question; audio sliders are not questions', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-checkbox-select.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 1, `got: ${JSON.stringify(qs.map((q) => [q.type, q.promptText]))}`);
+  const q = qs[0];
+  assert.equal(q.type, 'multiple_select');
+  assert.equal(q.metadata?.selectCount, 3);
+  assert.equal(q.options?.length, 5);
+  assert.match(q.promptText, /three correct statements/);
+  for (const o of q.options ?? []) {
+    assert.equal(doc.querySelectorAll(o.elementSelector!).length, 1);
+    assert.ok(doc.querySelector(o.elementSelector!)?.closest('#checkbox_1'));
+  }
+
+  const report = inspectRcfPage(doc);
+  assert.equal(report.interactions.find((i) => i.type === 'checkboxItemSelect')?.status, 'supported');
+  assert.equal(report.questionsDetected, 1);
+  assert.deepEqual(report.warnings, []);
+});
+
+test('Macmillan checkbox group - filler ticks every named option, even with typographic differences', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-checkbox-select.html');
+  // Stand-in for RCF: clicking a checkbox chip toggles aria-checked
+  doc.querySelectorAll('[role="checkbox"]').forEach((el) =>
+    el.addEventListener('click', () => el.setAttribute('aria-checked', el.getAttribute('aria-checked') === 'true' ? 'false' : 'true'))
+  );
+  const [question] = extractQuestionsFromGenericDOM(doc);
+
+  const answer = [
+    "Marks happy - definitely happier than before.", // dash/apostrophe differ from the page
+    'Maria hopes he can find his true passion.',
+    "Mark's experiment will be life-changing.",
+  ].join(MULTI_ANSWER_SEPARATOR);
+  const result = await fillFormField(doc, question, answer);
+
+  assert.equal(result.success, true, result.error);
+  const checked = Array.from(doc.querySelectorAll('[role="checkbox"]')).map((el) => el.getAttribute('aria-checked'));
+  assert.deepEqual(checked, ['true', 'false', 'true', 'false', 'true']);
+
+  // Running it again must not untick anything
+  await fillFormField(doc, question, answer);
+  assert.deepEqual(
+    Array.from(doc.querySelectorAll('[role="checkbox"]')).map((el) => el.getAttribute('aria-checked')),
+    ['true', 'false', 'true', 'false', 'true']
+  );
 });

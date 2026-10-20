@@ -30,6 +30,91 @@ export function findDeepElement(root: Document | Element | ShadowRoot, selector:
   return null;
 }
 
+/** Lowercase, drop punctuation/typographic differences so "Mark's happy – …" matches "Marks happy ...". */
+function normalizeOptionText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/['’‘`]/g, '') // "Mark's" and "Marks" must compare equal
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * Ticks one checkbox chip and verifies it. A checkbox *toggles*, so unlike radios it must not be clicked
+ * repeatedly: try one gentle strategy at a time and stop as soon as aria-checked turns true.
+ */
+async function tickCheckbox(el: HTMLElement): Promise<boolean> {
+  const isTicked = () => el.getAttribute('aria-checked') === 'true';
+  if (isTicked()) return true;
+
+  const view = (el.ownerDocument.defaultView || window) as any;
+  const strategies: Array<() => void> = [
+    () => el.click(),
+    () => {
+      const init = { bubbles: true, cancelable: true, view };
+      el.dispatchEvent(new PointerEvent('pointerdown', init));
+      el.dispatchEvent(new MouseEvent('mousedown', init));
+      el.dispatchEvent(new PointerEvent('pointerup', init));
+      el.dispatchEvent(new MouseEvent('mouseup', init));
+      el.dispatchEvent(new MouseEvent('click', init));
+    },
+    () => {
+      el.focus();
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true, view }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true, cancelable: true, view }));
+    },
+  ];
+
+  for (const strategy of strategies) {
+    strategy();
+    await new Promise((r) => setTimeout(r, 300));
+    if (isTicked()) return true;
+  }
+  return false;
+}
+
+/** Ticks every option named in a multiple_select answer ("A || B || C"); options already ticked are left alone. */
+async function fillMultiSelect(
+  doc: Document,
+  question: Question,
+  approvedAnswer: string
+): Promise<{ success: boolean; error?: string }> {
+  const options = question.options || [];
+  let wanted = approvedAnswer
+    .split('||')
+    .map((part) => normalizeOptionText(part))
+    .filter(Boolean);
+  const limit = question.metadata?.selectCount;
+  if (limit && wanted.length > limit) wanted = wanted.slice(0, limit);
+
+  const missing: string[] = [];
+  let ticked = 0;
+  for (const want of wanted) {
+    const option =
+      options.find((o) => normalizeOptionText(o.label) === want) ||
+      options.find((o) => want.length > 3 && (normalizeOptionText(o.label).includes(want) || want.includes(normalizeOptionText(o.label))));
+    const el = option?.elementSelector ? findDeepElement(doc, option.elementSelector) : null;
+    if (!el) {
+      missing.push(want);
+      continue;
+    }
+    if (await tickCheckbox(el)) {
+      flashHighlight(el);
+      ticked++;
+    } else {
+      missing.push(want);
+    }
+  }
+
+  if (ticked === 0) {
+    return { success: false, error: `No matching option found for multiple-select answer (Q#${question.index}).` };
+  }
+  if (missing.length > 0) {
+    console.warn('[StudyPilot] multiple_select: no option matched for', missing);
+  }
+  return { success: missing.length === 0, error: missing.length ? `Could not match: ${missing.join('; ')}` : undefined };
+}
+
 export async function fillFormField(
   doc: Document,
   question: Question,
@@ -46,6 +131,11 @@ export async function fillFormField(
   }
 
   const cleanAnswer = approvedAnswer.trim().toLowerCase();
+
+  // Tick-box groups take several answers at once and have their own flow
+  if (question.type === 'multiple_select') {
+    return fillMultiSelect(doc, question, approvedAnswer);
+  }
 
   // 1. If this is a Dropdown question, handle select element directly!
   if (question.type === 'dropdown') {
