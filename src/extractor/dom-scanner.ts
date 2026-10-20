@@ -296,13 +296,25 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       const parentSentence = (selectEl.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || selectEl.parentElement || selectEl;
       const clone = parentSentence.cloneNode(true) as HTMLElement;
 
+      // Several gaps in one sentence/paragraph: number them so each question says which blank it is about
+      const gapWidgets = clone.querySelectorAll('.dropDown');
+      const isMultiGap = gapWidgets.length > 1;
+      const currentGapNo = (selectEl.closest('.dropDown')?.getAttribute('data-rcfid') || '').replace('dropDown_', '');
+      if (isMultiGap) {
+        gapWidgets.forEach((widget) => {
+          const gapNo = (widget.getAttribute('data-rcfid') || '').replace('dropDown_', '');
+          widget.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNo}] `));
+        });
+      }
+
       clone.querySelectorAll('.ui-selectmenu-button, .ui-selectmenu-menu, .dropDown, select, button, .textControls, [style*="display: none"]').forEach((n) => {
         const placeholder = clone.ownerDocument.createTextNode(' [_____] ');
         n.replaceWith(placeholder);
       });
 
       let promptText = cleanText(clone.textContent) || `Dropdown Gap #${dropIndex}`;
-      promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+      promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ').replace(/\s+([.,!?;:])/g, '$1');
+      if (isMultiGap && currentGapNo) promptText += ` (Answer ONLY for [BLANK ${currentGapNo}])`;
 
       // Dialogue items keep the other speaker's line in a sibling <p> of the same <li>; pass it as context.
       // Feedback blocks are skipped on purpose: they explain (and often reveal) the answer.
@@ -314,6 +326,19 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
         itemClone.querySelectorAll('.dropDown').forEach((n) => n.replaceWith(clone.ownerDocument.createTextNode(' [_____] ')));
         const ctx = cleanText(itemClone.textContent).replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
         if (ctx && ctx !== promptText) itemContext = ctx;
+      }
+
+      // Gaps inside a longer text (an email, an article): give the AI the whole passage, not just the one sentence
+      let passageContext: string | undefined;
+      if (!itemContext) {
+        const passage = selectEl.closest('.mm_blockText') as HTMLElement | null;
+        if (passage && passage !== parentSentence) {
+          const passageClone = passage.cloneNode(true) as HTMLElement;
+          passageClone.querySelectorAll('.feedback, .dev-feedback, button').forEach((n) => n.remove());
+          passageClone.querySelectorAll('.dropDown').forEach((n) => n.replaceWith(clone.ownerDocument.createTextNode(' [_____] ')));
+          const text = cleanText(passageClone.textContent).replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ').replace(/\s+([.,!?;:])/g, '$1');
+          if (text.length > promptText.length + 20) passageContext = `[Full text]: ${text.slice(0, 3000)}`;
+        }
       }
 
       const validOptions = Array.from(selectEl.options).filter((o) => o.text && o.text.trim().length > 0 && !o.text.includes('---'));
@@ -337,7 +362,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
         index: dropIndex,
         type: 'dropdown',
         promptText,
-        contextText: itemContext,
+        contextText: itemContext ?? passageContext,
         options,
         fields: [fieldRef],
         metadata: {

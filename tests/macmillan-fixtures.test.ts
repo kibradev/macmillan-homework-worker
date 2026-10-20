@@ -350,3 +350,28 @@ test('Macmillan locating (choice popup) - filler opens the popup once and picks 
   const bad = await fillFormField(doc, qs[0], 'is not an option');
   assert.equal(bad.success, false);
 });
+
+test('Macmillan dropdown email - every gap is found with its sentence and the full text as context', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dropdown-email.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 4);
+  assert.deepEqual(qs.map((q) => q.fields[0].selector), ['#ui-id-1', '#ui-id-2', '#ui-id-4', '#ui-id-7']);
+  assert.deepEqual(qs[2].options?.map((o) => o.label), ['come up with', 'deal with', 'agree on']);
+
+  // Two gaps share one paragraph: blanks are numbered and each question names the one it is about
+  assert.match(qs[0].promptText, /^I've \[BLANK 3\] the data from our customer satisfaction survey/);
+  assert.match(qs[0].promptText, /problems we need to \[BLANK 4\]\. Here are some examples: \(Answer ONLY for \[BLANK 3\]\)$/);
+  assert.match(qs[1].promptText, /\(Answer ONLY for \[BLANK 4\]\)$/);
+  assert.notEqual(qs[0].promptText, qs[1].promptText);
+  assert.equal(qs[2].promptText, 'How can we [_____] the issue of late deliveries?');
+
+  // The whole email travels as context (subject line, greeting...), with gaps masked
+  for (const q of qs) {
+    assert.match(q.contextText ?? '', /^\[Full text\]: To: Marketing team/);
+    assert.match(q.contextText ?? '', /Subject: Speedy Deliveries Customer Satisfaction Survey/);
+    assert.match(q.contextText ?? '', /\[_____\] we meet on Friday afternoon at 4pm\./);
+  }
+
+  assert.equal(inspectRcfPage(doc).questionsDetected, 4);
+});
