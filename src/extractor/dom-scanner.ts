@@ -503,6 +503,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       });
       let promptText = cleanText(clone.textContent) || `Gap #${dIndex}`;
       promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+      const sentenceText = promptText;
       if (isMultiGap && currentGapId) {
         promptText += ` (Answer ONLY for [BLANK ${currentGapId.replace('complexDroppable_', '')}])`;
       }
@@ -518,6 +519,8 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
           g.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNo}] `));
         });
         passageContext = cleanText(passageClone.textContent) || undefined;
+        // One paragraph holding every gap: the passage *is* the prompt, so sending it twice per question only wastes tokens
+        if (passageContext === sentenceText) passageContext = undefined;
       }
       const singleUse = !!wordBoxEl?.querySelector('[data-restrictcount="1"]');
       const contextText = [passageContext, singleUse ? '[Note: each word in the word bank can be used only once.]' : '']

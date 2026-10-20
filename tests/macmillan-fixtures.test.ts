@@ -162,3 +162,43 @@ test('Macmillan checkbox group - filler ticks every named option, even with typo
     ['true', 'false', 'true', 'false', 'true']
   );
 });
+
+test('Macmillan word-box carousel - one paragraph with many gaps is not sent twice per question', () => {
+  const qs = extractQuestionsFromGenericDOM(loadFixture('tests/fixtures/macmillan-dragdrop-carousel.html'));
+
+  assert.equal(qs.length, 8);
+  assert.equal(qs[0].options?.length, 8);
+  qs.forEach((q, i) => assert.ok(q.promptText.includes(`(Answer ONLY for [BLANK ${i + 1}])`), q.promptText));
+  // Passage == prompt, so the context only carries the single-use rule
+  assert.equal(qs[0].contextText, '[Note: each word in the word bank can be used only once.]');
+});
+
+test('Macmillan word-box carousel - filler pages to the wanted word before picking it', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-carousel.html');
+  const words = Array.from(doc.querySelectorAll('.wordBox li')) as HTMLElement[];
+  const gap8 = doc.querySelector('[data-rcfid="complexDroppable_8"]') as HTMLElement;
+
+  // Stand-in for RCF: only the active word can be picked; prev/next move the active word; a click on a gap places it
+  const move = (delta: number) => {
+    const at = words.findIndex((w) => w.classList.contains('active'));
+    words[at].classList.remove('active');
+    words[at + delta].classList.add('active');
+  };
+  let picked = '';
+  words.forEach((w) =>
+    w.addEventListener('click', () => {
+      if (w.classList.contains('active')) picked = w.textContent || '';
+    })
+  );
+  doc.querySelector('.nextItem')!.addEventListener('click', () => move(1));
+  doc.querySelector('.previousItem')!.addEventListener('click', () => move(-1));
+  gap8.addEventListener('click', () => {
+    if (picked) gap8.setAttribute('data-filled', picked);
+  });
+
+  const questions = extractQuestionsFromGenericDOM(doc);
+  const result = await fillFormField(doc, questions[7], 'take'); // "take" is the 5th word; the box starts on "make"
+
+  assert.equal(result.success, true, result.error);
+  assert.equal(gap8.getAttribute('data-filled'), 'take');
+});

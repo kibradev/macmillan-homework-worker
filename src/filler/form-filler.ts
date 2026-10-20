@@ -335,6 +335,29 @@ export async function fillFormField(
   };
 }
 
+/**
+ * Macmillan's word box can be a carousel (prev/next buttons) that only shows the `.active` word.
+ * A word that is not active cannot be picked, so page through until the wanted one is active.
+ */
+async function revealWordBoxItem(wordBox: HTMLElement, word: HTMLElement): Promise<void> {
+  const prev = wordBox.querySelector('.itemNavigation.previousItem') as HTMLElement | null;
+  const next = wordBox.querySelector('.itemNavigation.nextItem') as HTMLElement | null;
+  const list = word.parentElement;
+  if (!prev || !next || !list) return; // plain word box: every word is already reachable
+
+  const items = Array.from(list.children) as HTMLElement[];
+  for (let step = 0; step < items.length + 2; step++) {
+    const active = items.find((li) => li.classList.contains('active'));
+    if (!active || active === word) return;
+
+    const forward = items.indexOf(word) > items.indexOf(active);
+    const button = forward ? next : prev;
+    if ((button as HTMLButtonElement).disabled) return;
+    button.click();
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
 export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAnswer: string): Promise<boolean> {
   const safety = validateElementSafety(el);
   if (!safety.isSafe) {
@@ -528,6 +551,7 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
 
       if (matchedWordEl) {
         console.log('[StudyPilot] Found matching word in wordBox, performing drag & drop simulation:', matchedWordEl);
+        await revealWordBoxItem(wordBox as HTMLElement, matchedWordEl);
         
         // 1. CLICK WORD IN WORDBOX FIRST
         matchedWordEl.focus();
