@@ -1,4 +1,4 @@
-import { extractQuestionsFromGenericDOM } from './dom-scanner';
+import { extractQuestionsFromGenericDOM, findGlossaryData, findListeningData } from './dom-scanner';
 
 /**
  * Macmillan RCF tags every interactive widget with `data-rcfinteraction="<type>"`.
@@ -9,16 +9,19 @@ import { extractQuestionsFromGenericDOM } from './dom-scanner';
 /** Interaction types the scanner + filler know how to handle. */
 export const SUPPORTED_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect']);
 
-/** Layout-only wrappers: they contain questions but are not questions themselves. */
-export const CONTAINER_RCF_INTERACTIONS = new Set(['collapsibleList']);
+/**
+ * Widgets that hold content but are never answered: layout wrappers, the audio player, the glossary box.
+ * Macmillan also flags such widgets itself with data-ignorenextanswer="y".
+ */
+export const PASSIVE_RCF_INTERACTIONS = new Set(['collapsibleList', 'collapsibleBlock', 'audioElement']);
 
 /** Interactions that each correspond to exactly one answerable gap. */
-const GAP_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein']);
+const GAP_RCF_INTERACTIONS = new Set(['dropDown', 'complexDroppable', 'locating', 'typein', 'radioItemSelect']);
 
 export interface RcfInteractionSummary {
   type: string;
   count: number;
-  status: 'supported' | 'container' | 'UNSUPPORTED';
+  status: 'supported' | 'passive' | 'UNSUPPORTED';
   /** First element of this type, stripped of feedback/svg/script and truncated. Only for unsupported types. */
   sampleHtml?: string;
 }
@@ -27,6 +30,15 @@ export interface RcfInspectionReport {
   url: string;
   activity?: Record<string, string | null>;
   interactions: RcfInteractionSummary[];
+  /** What the AI will be told about audio/glossary: shows whether a listening activity has a usable transcript. */
+  context: {
+    isListening: boolean;
+    audioFile?: string | null;
+    transcriptFound: boolean;
+    transcriptPreview?: string;
+    captionsButtonPresent: boolean;
+    glossaryFound: boolean;
+  };
   gapsOnPage: number;
   questionsDetected: number;
   questionTypes: Record<string, number>;
@@ -66,11 +78,8 @@ export function inspectRcfPage(doc: Document): RcfInspectionReport {
   });
 
   const interactions: RcfInteractionSummary[] = Array.from(byType.entries()).map(([type, els]) => {
-    const status = SUPPORTED_RCF_INTERACTIONS.has(type)
-      ? 'supported'
-      : CONTAINER_RCF_INTERACTIONS.has(type)
-        ? 'container'
-        : 'UNSUPPORTED';
+    const isPassive = PASSIVE_RCF_INTERACTIONS.has(type) || els.every((el) => el.getAttribute('data-ignorenextanswer') === 'y');
+    const status = SUPPORTED_RCF_INTERACTIONS.has(type) ? 'supported' : isPassive ? 'passive' : 'UNSUPPORTED';
     return {
       type,
       count: els.length,
@@ -103,10 +112,25 @@ export function inspectRcfPage(doc: Document): RcfInspectionReport {
     warnings.push('No data-rcfinteraction widgets found: wrong frame, or the activity has not finished loading.');
   }
 
+  const listening = findListeningData(doc);
+  const context: RcfInspectionReport['context'] = {
+    isListening: listening.isListening,
+    audioFile: doc.querySelector('[data-audiosrc]')?.getAttribute('data-audiosrc'),
+    transcriptFound: !!listening.transcript,
+    transcriptPreview: listening.transcript?.slice(0, 200),
+    captionsButtonPresent: !!doc.querySelector('.audioScriptButton, [data-plyr="rcf-captions"]'),
+    glossaryFound: !!findGlossaryData(doc),
+  };
+  if (context.isListening && !context.transcriptFound) {
+    warnings.push(
+      `Listening activity without a readable transcript${context.captionsButtonPresent ? ' (a captions button exists: the script may only load when it is clicked)' : ''}: the AI cannot hear the audio and will guess.`
+    );
+  }
+
   const list = doc.querySelector('[data-rcfinteraction="collapsibleList"]');
   if (list && list.getAttribute('data-default') !== 'expanded') {
     warnings.push('collapsibleList is in "one by one" mode: only the active item is visible, others may not be fillable.');
   }
 
-  return { url, activity, interactions, gapsOnPage, questionsDetected: questions.length, questionTypes, warnings };
+  return { url, activity, interactions, context, gapsOnPage, questionsDetected: questions.length, questionTypes, warnings };
 }

@@ -133,12 +133,13 @@ export function queryAllDeep(root: Document | Element | ShadowRoot, selector: st
 export function findListeningData(doc: Document | Element): { isListening: boolean; audioUrl?: string; transcript?: string } {
   // 1. Search for audio elements or sources across all common players & Macmillan RCF audio player tags
   const audioEl = doc.querySelector(
-    'audio, [data-audio-src], [data-audio], [class*="audio-player"], [class*="audioPlayer"], .audioInterface, .player, [data-player-type*="audio"], [id*="audio"]'
+    'audio, [data-audiosrc], [data-audio-src], [data-audio], [class*="audio-player"], [class*="audioPlayer"], .audioInterface, .player, [data-player-type*="audio"], [id*="audio"]'
   ) as HTMLElement | null;
 
   let audioUrl: string | undefined;
   if (audioEl) {
     audioUrl = (audioEl as HTMLAudioElement).src ||
+               audioEl.getAttribute('data-audiosrc') ||
                audioEl.getAttribute('data-audio-src') ||
                audioEl.getAttribute('data-audio') ||
                audioEl.getAttribute('data-src') ||
@@ -151,7 +152,6 @@ export function findListeningData(doc: Document | Element): { isListening: boole
     '.scriptScroller',
     '.script',
     '.audioScript',
-    '.audioScriptButton',
     '.tapescript',
     '.transcript',
     '[class*="scriptScroller"]',
@@ -170,8 +170,13 @@ export function findListeningData(doc: Document | Element): { isListening: boole
   ];
   let transcript: string | undefined;
   for (const sel of transcriptSelectors) {
-    const el = doc.querySelector(sel) as HTMLElement | null;
-    if (el && el.textContent && el.textContent.trim().length > 15) {
+    // Class patterns like [class*="audioScript"] also match the captions toggle *button*; its label is not a transcript.
+    const el = Array.from(doc.querySelectorAll(sel)).find((candidate) => {
+      if (candidate.closest('button, [role="button"]')) return false;
+      const text = candidate.textContent?.trim() || '';
+      return text.length > 15 && !/^(show|hide)\s*captions/i.test(text);
+    }) as HTMLElement | undefined;
+    if (el) {
       transcript = cleanText(el.textContent);
       break;
     }

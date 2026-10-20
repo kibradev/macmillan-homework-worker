@@ -48,7 +48,7 @@ test('RCF inspector - reports supported widgets and matches gap count to detecte
   const dd = inspectRcfPage(loadFixture('tests/fixtures/macmillan-dropdown-dialogue.html'));
   assert.deepEqual(
     dd.interactions.map((i) => [i.type, i.count, i.status]).sort(),
-    [['collapsibleList', 1, 'container'], ['dropDown', 4, 'supported']]
+    [['collapsibleList', 1, 'passive'], ['dropDown', 4, 'supported']]
   );
   assert.equal(dd.gapsOnPage, 4);
   assert.equal(dd.questionsDetected, 4);
@@ -66,4 +66,23 @@ test('RCF inspector - flags unsupported widgets with a sanitized sample', () => 
   assert.match(sortable?.sampleHtml ?? '', /<li>one<\/li>/);
   assert.doesNotMatch(sortable?.sampleHtml ?? '', /secret answer/);
   assert.ok(report.warnings.some((w) => w.includes('sortable')));
+});
+
+test('RCF inspector - audio player and glossary are passive, and a captions button is not mistaken for a transcript', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-listening-audio.html');
+  const report = inspectRcfPage(doc);
+
+  assert.deepEqual(
+    report.interactions.map((i) => [i.type, i.status]).sort(),
+    [['audioElement', 'passive'], ['collapsibleBlock', 'passive']]
+  );
+  assert.equal(report.context.isListening, true);
+  assert.equal(report.context.audioFile, 'LH_OPP4_Aud_U02_2.1_Lisprac1_001.mp3');
+  assert.equal(report.context.glossaryFound, true);
+  assert.equal(report.context.captionsButtonPresent, true);
+
+  // "Hide captions / Show captions" is the toggle's label, not a transcript
+  assert.equal(report.context.transcriptFound, false);
+  assert.ok(report.warnings.some((w) => w.includes('without a readable transcript')));
+  assert.ok(!report.warnings.some((w) => w.includes('Unsupported interaction')));
 });
