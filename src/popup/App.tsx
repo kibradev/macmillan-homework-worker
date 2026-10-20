@@ -277,7 +277,7 @@ export const App: React.FC = () => {
         setItems([]);
         setBanner({
           type: 'info',
-          text: 'No homework questions detected on this page. If this is an iframe, please wait for it to load.',
+          text: `No homework questions detected. ${await describeUndetected(tabId)}`.trim(),
         });
       } else {
         const reviewItems: AnswerReviewItem[] = scanRes.questions.map((q) => ({
@@ -323,6 +323,25 @@ export const App: React.FC = () => {
       if (res?.success) replies.push({ frameId, ...res });
     }
     return replies;
+  };
+
+  /** When a scan finds nothing, say what the page does contain so the cause is visible without opening DevTools. */
+  const describeUndetected = async (tabId: number): Promise<string> => {
+    try {
+      const reports = (await collectFromRcfFrames(tabId, 'INSPECT_PAGE')).map((r) => r.report);
+      if (reports.length === 0) {
+        return 'Sayfada Macmillan etkinliği bulunamadı: ödev tam yüklenmemiş olabilir. Sayfayı yenileyip (F5) tekrar dene.';
+      }
+      const found = reports
+        .flatMap((r) => r.interactions as Array<{ type: string; status: string }>)
+        .filter((i) => i.status !== 'passive')
+        .map((i) => (i.status === 'UNSUPPORTED' ? `${i.type} (desteklenmiyor)` : i.type));
+      return found.length
+        ? `Sayfada şunlar var: ${found.join(', ')}. Ayrıntı için "Tanı Raporu"nu kopyalayıp gönder.`
+        : 'Sayfada cevaplanabilir bir bileşen bulunamadı.';
+    } catch {
+      return '';
+    }
   };
 
   const handleDiagnose = async () => {
@@ -395,28 +414,27 @@ export const App: React.FC = () => {
     });
 
     try {
-      let questionsToSolve = items.map((i) => i.question);
-      let currentReviewItems = items;
-
-      if (questionsToSolve.length === 0) {
-        const scanRes = await performScan();
-        if (!scanRes || scanRes.questions.length === 0) {
-          setIsScanning(false);
-          setBanner({
-            type: 'warning',
-            text: 'Sayfada çözülecek soru tespit edilemedi. Lütfen ödevin tam yüklendiğinden emin olun.',
-          });
-          return;
-        }
-        questionsToSolve = scanRes.questions;
-        currentReviewItems = scanRes.questions.map((q) => ({
-          question: q,
-          userEditedAnswer: '',
-          approved: true,
-          fillStatus: 'idle',
-        }));
-        setItems(currentReviewItems);
+      // Always scan the page that is open now. Reusing the list from the previous page would solve and fill
+      // the old page's questions into the new activity.
+      const scanRes = await performScan();
+      if (!scanRes || scanRes.questions.length === 0) {
+        setIsScanning(false);
+        setItems([]);
+        const scanTabId = await getActiveTabId();
+        setBanner({
+          type: 'warning',
+          text: `Sayfada çözülecek soru tespit edilemedi. ${scanTabId ? await describeUndetected(scanTabId) : ''}`.trim(),
+        });
+        return;
       }
+      const questionsToSolve = scanRes.questions;
+      const currentReviewItems: AnswerReviewItem[] = scanRes.questions.map((q) => ({
+        question: q,
+        userEditedAnswer: '',
+        approved: true,
+        fillStatus: 'idle',
+      }));
+      setItems(currentReviewItems);
       setIsScanning(false);
 
       // 2. Generate with AI
@@ -454,7 +472,7 @@ export const App: React.FC = () => {
         text: `3/3 Çözüldü! Cevaplar sayfadaki alanlara otomatik işaretleniyor...`,
       });
 
-      await fillItemsList(solvedItems);
+      await fillItemsList(solvedItems, scanRes.frameId);
     } catch (err) {
       setIsScanning(false);
       setIsGenerating(false);
@@ -542,7 +560,8 @@ export const App: React.FC = () => {
     }
   };
 
-  const fillItemsList = async (itemList: AnswerReviewItem[]) => {
+  const fillItemsList = async (itemList: AnswerReviewItem[], frameIdOverride?: number) => {
+    const targetFrameId = frameIdOverride ?? activeFrameId;
     const tabId = await getActiveTabId();
     if (!tabId) return;
 
@@ -575,7 +594,7 @@ export const App: React.FC = () => {
         let response: FillApprovedAnswerResponse | null = null;
 
         // Try primary targeted frame first
-        if (activeFrameId !== undefined) {
+        if (targetFrameId !== undefined) {
           try {
             response = (await chrome.tabs.sendMessage(
               tabId,
@@ -584,7 +603,7 @@ export const App: React.FC = () => {
                 question: item.question,
                 answer: item.userEditedAnswer,
               },
-              { frameId: activeFrameId }
+              { frameId: targetFrameId }
             )) as FillApprovedAnswerResponse;
           } catch {}
         }
