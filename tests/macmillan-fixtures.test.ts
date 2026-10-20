@@ -223,3 +223,54 @@ test('RCF snapshot - keeps the structure needed to support a new widget, drops n
   assert.equal(snapshot.truncated, false);
   assert.ok(snapshot.html.length < 60_000);
 });
+
+test('Macmillan checkbox list - one multiple_select per list item with its own prompt and tick count', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-checkbox-list.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 3);
+  assert.deepEqual(qs.map((q) => q.type), ['multiple_select', 'multiple_select', 'multiple_select']);
+  assert.deepEqual(qs.map((q) => q.promptText), [
+    "When I was a university student, I'd eat lots of takeaways because I ____ cook well.",
+    'She has recovered well from the accident but she still ____ walk very well.',
+    'He ____ speak three different languages now.',
+  ]);
+  // Each question says how many to tick; this activity mixes 2 and 1
+  assert.deepEqual(qs.map((q) => q.metadata?.selectCount), [2, 1, 2]);
+
+  // The activity instructions travel as context, the answer-revealing feedback block does not
+  for (const q of qs) {
+    assert.match(q.contextText ?? '', /more than one possible answer/);
+    assert.doesNotMatch(`${q.promptText} ${q.contextText ?? ''}`, /talk about our ability/);
+  }
+
+  // item_1..item_3 repeat in every group: each selector must stay inside its own group
+  qs.forEach((q, i) => {
+    for (const o of q.options ?? []) {
+      assert.equal(doc.querySelectorAll(o.elementSelector!).length, 1, o.elementSelector);
+      assert.ok(doc.querySelector(o.elementSelector!)?.closest(`#checkbox_${i + 1}`));
+    }
+  });
+
+  const report = inspectRcfPage(doc);
+  assert.equal(report.questionsDetected, 3);
+  assert.deepEqual(report.warnings, []);
+});
+
+test('Macmillan checkbox list - filler ticks the right chips in the right group', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-checkbox-list.html');
+  doc.querySelectorAll('[role="checkbox"]').forEach((el) =>
+    el.addEventListener('click', () => el.setAttribute('aria-checked', el.getAttribute('aria-checked') === 'true' ? 'false' : 'true'))
+  );
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal((await fillFormField(doc, qs[0], ["couldn't", "wasn't able to"].join(MULTI_ANSWER_SEPARATOR))).success, true);
+  assert.equal((await fillFormField(doc, qs[1], "can't")).success, true); // a single answer, no separator
+  assert.equal((await fillFormField(doc, qs[2], ['is able to', 'can'].join(MULTI_ANSWER_SEPARATOR))).success, true);
+
+  const state = (n: number) =>
+    Array.from(doc.querySelectorAll(`#checkbox_${n} [role="checkbox"]`)).map((el) => el.getAttribute('aria-checked'));
+  assert.deepEqual(state(1), ['true', 'true', 'false']);
+  assert.deepEqual(state(2), ['true', 'false', 'false']);
+  assert.deepEqual(state(3), ['true', 'false', 'true']);
+});
