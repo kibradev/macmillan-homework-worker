@@ -73,6 +73,31 @@ async function tickCheckbox(el: HTMLElement): Promise<boolean> {
   return false;
 }
 
+/**
+ * Index of the <option> an answer refers to, or -1.
+ * The empty "clear" entry must never match: 'anything'.includes('') is true, so a naive substring test lands on it.
+ * Exact matches win; a partial match is only a fallback and prefers the longest option text ("solved" over "solve").
+ */
+export function findOptionIndex(options: ArrayLike<{ value: string; text: string }>, answer: string): number {
+  const wanted = normalizeOptionText(answer);
+  const rawAnswer = answer.trim().toLowerCase();
+  if (!wanted) return -1;
+
+  const entries = Array.from(options).map((opt, index) => ({
+    index,
+    value: (opt.value || '').trim().toLowerCase(),
+    text: normalizeOptionText(opt.text || ''),
+  }));
+
+  const exact = entries.find((e) => e.text && (e.text === wanted || (e.value && e.value === rawAnswer)));
+  if (exact) return exact.index;
+
+  const partial = entries
+    .filter((e) => e.text && wanted.length > 2 && (e.text.includes(wanted) || wanted.includes(e.text)))
+    .sort((a, b) => b.text.length - a.text.length)[0];
+  return partial ? partial.index : -1;
+}
+
 /** Ticks every option named in a multiple_select answer ("A || B || C"); options already ticked are left alone. */
 async function fillMultiSelect(
   doc: Document,
@@ -420,22 +445,8 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
   const tag = (el.tagName || '').toUpperCase();
   if (tag === 'SELECT') {
     const selectEl = el as HTMLSelectElement;
-    let targetIndex = -1;
     const clean = approvedAnswer.trim().toLowerCase();
-    for (let i = 0; i < selectEl.options.length; i++) {
-      const opt = selectEl.options[i];
-      const optVal = (opt.value || '').toLowerCase();
-      const optTxt = (opt.text || '').trim().toLowerCase();
-      if (
-        optVal === clean ||
-        optTxt === clean ||
-        (clean.length > 2 && optTxt.includes(clean)) ||
-        (clean.length > 2 && clean.includes(optTxt))
-      ) {
-        targetIndex = i;
-        break;
-      }
-    }
+    const targetIndex = findOptionIndex(selectEl.options, approvedAnswer);
     if (targetIndex >= 0) {
       console.log(`[StudyPilot] Selecting option #${targetIndex} ("${selectEl.options[targetIndex].text}") for select:`, selectEl);
       // Macmillan's jQuery UI selectmenu only fires its change handlers when the index actually changes,

@@ -375,3 +375,33 @@ test('Macmillan dropdown email - every gap is found with its sentence and the fu
 
   assert.equal(inspectRcfPage(doc).questionsDetected, 4);
 });
+
+test('Macmillan dropdown - the filler selects the real option, never the empty first entry', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dropdown-email.html');
+  (globalThis as any).chrome = { runtime: { sendMessage: async () => null } }; // no page bridge in this test
+  const qs = extractQuestionsFromGenericDOM(doc);
+  const selectOf = (q: (typeof qs)[number]) => doc.querySelector(q.fields[0].selector) as HTMLSelectElement;
+
+  // Every gap starts on the empty "clear" entry, whose text is '' — and 'anything'.includes('') is true
+  assert.equal((await fillFormField(doc, qs[0], 'analysed')).success, true);
+  assert.equal(selectOf(qs[0]).selectedIndex, 2);
+  assert.equal(selectOf(qs[0]).options[selectOf(qs[0]).selectedIndex].text, 'analysed');
+
+  assert.equal((await fillFormField(doc, qs[1], 'come up with')).success, true);
+  assert.equal(selectOf(qs[1]).options[selectOf(qs[1]).selectedIndex].text, 'come up with');
+
+  // Close options: "solve" must not be mistaken for "solved" (or the other way round)
+  assert.equal((await fillFormField(doc, qs[3], 'solve')).success, true);
+  assert.equal(selectOf(qs[3]).options[selectOf(qs[3]).selectedIndex].text, 'solve');
+  assert.equal((await fillFormField(doc, qs[0], 'solved')).success, true);
+  assert.equal(selectOf(qs[0]).options[selectOf(qs[0]).selectedIndex].text, 'solved');
+
+  // Typographic and case differences from the AI still match
+  assert.equal((await fillFormField(doc, qs[2], 'Deal  With')).success, true);
+  assert.equal(selectOf(qs[2]).options[selectOf(qs[2]).selectedIndex].text, 'deal with');
+
+  // An answer that matches nothing must fail, not fall back to the empty entry
+  const before = selectOf(qs[2]).selectedIndex;
+  assert.equal((await fillFormField(doc, qs[2], 'banana split')).success, false);
+  assert.equal(selectOf(qs[2]).selectedIndex, before);
+});
