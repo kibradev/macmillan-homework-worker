@@ -572,6 +572,87 @@ async function pickLocatingChoice(root: HTMLElement, openTarget: HTMLElement, an
   return false;
 }
 
+/**
+ * Click-and-stick: click the phrase in the word bank to pick it, then click the gap once to place it.
+ * A gap that holds a word gives it back when clicked again, so the gap must be clicked exactly once per attempt and
+ * the outcome has to be read back. Returns true only when the gap really shows the wanted phrase.
+ */
+async function placeWordInGap(gap: HTMLElement, wordBox: HTMLElement, answer: string): Promise<boolean> {
+  const doc = gap.ownerDocument;
+  const view = (doc.defaultView || window) as any;
+  const slot = (gap.querySelector('.dragTarget, .dev-droppable') as HTMLElement | null) || gap;
+  const wanted = normalizeOptionText(answer);
+  const holds = () => normalizeOptionText(slot.textContent || '');
+  const settled = async (waitMs: number) => {
+    const until = Date.now() + waitMs;
+    while (holds() !== wanted && Date.now() < until) await sleep(100);
+    return holds() === wanted;
+  };
+
+  // Already right (for example on a second run): clicking it again would take the phrase back out
+  if (holds() === wanted) {
+    flashHighlight(gap);
+    return true;
+  }
+
+  const banked = Array.from(wordBox.querySelectorAll('.dragItem')) as HTMLElement[];
+  const candidates = banked.length > 0 ? banked : (Array.from(wordBox.querySelectorAll('li, .draggable, [data-rcfid*="drag"]')) as HTMLElement[]);
+  const index = findOptionIndex(
+    candidates.map((c) => ({ value: '', text: c.textContent || '' })),
+    answer
+  );
+  if (index < 0) {
+    console.warn('[StudyPilot] No phrase in the word bank matches', answer);
+    return false;
+  }
+  const word = candidates[index];
+
+  // One click event per press: pointer/mouse down+up as a real click does, then a single click()
+  const press = (target: HTMLElement) => {
+    target.focus?.();
+    const init = { bubbles: true, cancelable: true, view };
+    target.dispatchEvent(new PointerEvent('pointerdown', init));
+    target.dispatchEvent(new MouseEvent('mousedown', init));
+    target.dispatchEvent(new PointerEvent('pointerup', init));
+    target.dispatchEvent(new MouseEvent('mouseup', init));
+    target.click();
+  };
+
+  // The gap holds a different phrase: one click gives it back to the bank
+  if (holds()) {
+    press(slot);
+    await sleep(300);
+  }
+
+  await revealWordBoxItem(wordBox, word);
+
+  press(word);
+  await sleep(200);
+  press(slot);
+  if (await settled(1200)) {
+    flashHighlight(gap);
+    return true;
+  }
+
+  // The phrase is picked but the click did not land: try the outer gap element
+  press(gap);
+  if (await settled(1200)) {
+    flashHighlight(gap);
+    return true;
+  }
+
+  // Last attempt from scratch (the pick may have been lost)
+  press(word);
+  await sleep(200);
+  press(slot);
+  if (await settled(1200)) {
+    flashHighlight(gap);
+    return true;
+  }
+  console.warn('[StudyPilot] The phrase could not be placed in the gap:', answer, 'gap shows:', slot.textContent);
+  return false;
+}
+
 export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAnswer: string): Promise<boolean> {
   const safety = validateElementSafety(el);
   if (!safety.isSafe) {
@@ -728,62 +809,9 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
 
   // 4. SPECIAL MACMILLAN CLICK-AND-STICK / DRAG-TARGET FILLING
   if (el.classList.contains('dragTarget') || el.classList.contains('clickAndStickable') || el.classList.contains('complexDroppable')) {
-    console.log('[StudyPilot] Macmillan clickAndStickable target detected, looking for word in wordBox:', approvedAnswer);
-    const ownerDoc = el.ownerDocument || doc;
-    const ownerWin = (ownerDoc.defaultView || window) as any;
-    const wordBox = ownerDoc.querySelector('.wordBox');
-    
+    const wordBox = (el.ownerDocument || doc).querySelector('.wordBox') as HTMLElement | null;
     if (wordBox) {
-      const cleanTarget = approvedAnswer.trim().toLowerCase();
-      const allWords = Array.from(wordBox.querySelectorAll('li, .dragItem, .draggable, [data-rcfid*="drag"], span, div'))
-        .filter((w) => w.textContent && w.textContent.trim().length > 1 && !w.classList.contains('count')) as HTMLElement[];
-      
-      // Prefer an exact match on real word-bank items; fuzzy matching is only a fallback
-      // (otherwise "look" could pick "looks").
-      const dragItems = allWords.filter((w) => w.classList.contains('dragItem'));
-      const matchedWordEl =
-        dragItems.find((w) => (w.textContent?.trim().toLowerCase() || '') === cleanTarget) ||
-        allWords.find((w) => (w.textContent?.trim().toLowerCase() || '') === cleanTarget) ||
-        allWords.find((w) => {
-          const wt = w.textContent?.trim().toLowerCase() || '';
-          return cleanTarget.length > 2 && (wt.includes(cleanTarget) || cleanTarget.includes(wt));
-        });
-
-      if (matchedWordEl) {
-        console.log('[StudyPilot] Found matching word in wordBox, performing drag & drop simulation:', matchedWordEl);
-        await revealWordBoxItem(wordBox as HTMLElement, matchedWordEl);
-        
-        // 1. CLICK WORD IN WORDBOX FIRST
-        matchedWordEl.focus();
-        matchedWordEl.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: ownerWin }));
-        matchedWordEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: ownerWin }));
-        matchedWordEl.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: ownerWin }));
-        matchedWordEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: ownerWin }));
-        matchedWordEl.click();
-
-        await new Promise((r) => setTimeout(r, 200));
-
-        // 2. NOW CLICK THE TARGET GAP
-        const innerTarget = (el.querySelector('.dragTarget, .dev-droppable') as HTMLElement | null) || el;
-        innerTarget.focus();
-        innerTarget.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: ownerWin }));
-        innerTarget.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: ownerWin }));
-        innerTarget.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: ownerWin }));
-        innerTarget.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: ownerWin }));
-        innerTarget.click();
-
-        if (el !== innerTarget) {
-          el.focus();
-          el.click();
-        }
-
-        // 3. Small pause between questions so Macmillan UI can finish stick animation
-        await new Promise((r) => setTimeout(r, 200));
-
-        flashHighlight(innerTarget);
-        flashHighlight(el);
-        return true;
-      }
+      return placeWordInGap(el, wordBox, approvedAnswer);
     }
   }
 

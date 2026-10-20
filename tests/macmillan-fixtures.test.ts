@@ -39,8 +39,8 @@ test('Macmillan drag & drop word box - numbers gaps sharing a sentence and passe
   assert.match(qs[0].promptText, /Answer ONLY for \[BLANK 1\]/);
   assert.match(qs[1].promptText, /Answer ONLY for \[BLANK 2\]/);
 
-  // Single-gap sentence keeps the plain placeholder
-  assert.equal(qs[4].promptText, "Amber: So that's why you were [_____] them?");
+  // A single gap inside a numbered passage uses the passage's number too, so prompt and context agree
+  assert.equal(qs[4].promptText, "Amber: So that's why you were [BLANK 5] them? (Answer ONLY for [BLANK 5])");
 
   // Whole dialogue and the single-use rule are passed as context
   assert.match(qs[4].contextText ?? '', /Hi Christina!/);
@@ -197,7 +197,10 @@ test('Macmillan word-box carousel - filler pages to the wanted word before picki
   doc.querySelector('.nextItem')!.addEventListener('click', () => move(1));
   doc.querySelector('.previousItem')!.addEventListener('click', () => move(-1));
   gap8.addEventListener('click', () => {
-    if (picked) gap8.setAttribute('data-filled', picked);
+    if (!picked) return;
+    gap8.setAttribute('data-filled', picked);
+    gap8.querySelector('.dragTarget')!.textContent = picked; // what the learner sees in the gap
+    picked = '';
   });
 
   const questions = extractQuestionsFromGenericDOM(doc);
@@ -639,4 +642,121 @@ test('Mixed activity - question ids stay unique when several kinds of question s
   // Each id still resolves to the right question
   assert.equal(qs.find((q) => q.type === 'dropdown')?.options?.[0].label, 'went');
   assert.equal(qs.filter((q) => q.type === 'ordering').length, 4);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Click-and-stick phrases in a listening dialogue
+
+/**
+ * Stand-in for RCF's click-and-stick: clicking a bank item picks it; clicking a gap places the picked item there.
+ * Clicking a gap that holds a word (and nothing is picked) takes the word back, exactly like the real thing.
+ */
+function makeClickAndStick(doc: Document, options: { ignoreClicks?: boolean } = {}) {
+  let picked: HTMLElement | null = null;
+  const release = (slot: HTMLElement) => {
+    doc.querySelectorAll('.wordBox li.dragItem').forEach((li) => {
+      if ((li as HTMLElement).dataset.rcfid === slot.dataset.word) li.classList.remove('dragged');
+    });
+    slot.textContent = '';
+    slot.classList.remove('populated');
+    delete slot.dataset.word;
+  };
+  doc.querySelectorAll('.wordBox li.dragItem').forEach((li) =>
+    li.addEventListener('click', () => {
+      if (options.ignoreClicks || li.classList.contains('dragged')) return;
+      picked = picked === li ? null : (li as HTMLElement);
+    })
+  );
+  doc.querySelectorAll('[data-rcfinteraction="complexDroppable"]').forEach((gap) =>
+    gap.addEventListener('click', () => {
+      if (options.ignoreClicks) return;
+      const slot = gap.querySelector('.dragTarget') as HTMLElement;
+      if (picked) {
+        if (slot.textContent) release(slot);
+        slot.textContent = picked.textContent;
+        slot.classList.add('populated');
+        slot.dataset.word = picked.dataset.rcfid;
+        picked.classList.add('dragged');
+        picked = null;
+      } else if (slot.textContent) {
+        release(slot);
+      }
+    })
+  );
+  return {
+    slot: (n: number) => doc.querySelector(`[data-rcfid="complexDroppable_${n}"] .dragTarget`) as HTMLElement,
+  };
+}
+
+test('Macmillan listening drag-and-drop - gaps are numbered like the passage, with transcript and instructions as context', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-phrases.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 3);
+  assert.deepEqual(qs[0].options?.map((o) => o.label), ['It turns out', "You'll never guess", "Really? You're kidding"]);
+
+  // One gap per paragraph, but the passage numbers every gap, so the prompt must use the same numbers
+  assert.equal(qs[0].promptText, 'Burak: [BLANK 1] who I saw last night! (Answer ONLY for [BLANK 1])');
+  assert.equal(qs[2].promptText, 'Burak: Well, he was! But now he lives round the corner! [BLANK 3] that he was going to the same concert as me. (Answer ONLY for [BLANK 3])');
+
+  const context = qs[0].contextText ?? '';
+  assert.match(context, /^\[Instructions\]: Listen and complete the conversation/);
+  assert.match(context, /Burak: \[BLANK 1\] who I saw last night!/);
+  assert.match(context, /\[Audio Transcript \/ Tapescript\]:\nBurak: You’ll never guess who I saw last night!\nTeresa: Who\?/);
+  assert.match(context, /only once/);
+});
+
+test('Macmillan click-and-stick - a gap is clicked exactly once, so the placed phrase is not taken back', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-phrases.html');
+  const rcf = makeClickAndStick(doc);
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  const first = await fillFormField(doc, qs[0], 'You’ll never guess'); // typographic apostrophe from the AI
+  assert.equal(first.success, true, first.error);
+  assert.equal(rcf.slot(1).textContent, "You'll never guess");
+
+  assert.equal((await fillFormField(doc, qs[1], "Really? You're kidding")).success, true);
+  assert.equal(rcf.slot(2).textContent, "Really? You're kidding");
+  assert.equal(rcf.slot(1).textContent, "You'll never guess", 'earlier gaps stay filled');
+});
+
+test('Macmillan click-and-stick - running a gap that is already right changes nothing', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-phrases.html');
+  const rcf = makeClickAndStick(doc);
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal((await fillFormField(doc, qs[0], "You'll never guess")).success, true);
+  // A second Auto-Pilot run: a naive click on the filled gap would take the phrase back out
+  assert.equal((await fillFormField(doc, qs[0], "You'll never guess")).success, true);
+
+  assert.equal(rcf.slot(1).textContent, "You'll never guess");
+  assert.ok(rcf.slot(1).classList.contains('populated'));
+});
+
+test('Macmillan click-and-stick - a gap holding a different phrase is corrected and the old phrase goes back to the bank', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-phrases.html');
+  const rcf = makeClickAndStick(doc);
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  await fillFormField(doc, qs[0], 'It turns out'); // wrong on purpose
+  assert.equal(rcf.slot(1).textContent, 'It turns out');
+
+  const fixed = await fillFormField(doc, qs[0], "You'll never guess");
+  assert.equal(fixed.success, true, fixed.error);
+  assert.equal(rcf.slot(1).textContent, "You'll never guess");
+  const bankItem = doc.querySelector('[data-rcfid="cd_3"]')!;
+  assert.equal(bankItem.classList.contains('dragged'), false, 'the replaced phrase is available again');
+});
+
+test('Macmillan click-and-stick - a phrase that is not in the bank, or a page that ignores the clicks, is a failure', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-phrases.html');
+  const rcf = makeClickAndStick(doc);
+  const qs = extractQuestionsFromGenericDOM(doc);
+  assert.equal((await fillFormField(doc, qs[0], 'Once upon a time')).success, false);
+  assert.equal(rcf.slot(1).textContent, '');
+
+  const deaf = loadFixture('tests/fixtures/macmillan-dragdrop-phrases.html');
+  makeClickAndStick(deaf, { ignoreClicks: true });
+  const result = await fillFormField(deaf, extractQuestionsFromGenericDOM(deaf)[0], "You'll never guess");
+  assert.equal(result.success, false, 'success must be verified, not assumed');
 });

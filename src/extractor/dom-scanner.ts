@@ -648,7 +648,10 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       const clone = parentSentence.cloneNode(true) as HTMLElement;
       // When one sentence holds several gaps, number them so each question is distinguishable
       const gapsInSentence = clone.querySelectorAll('[data-rcfid^="complexDroppable_"]');
-      const isMultiGap = gapsInSentence.length > 1;
+      // A passage that is sent as context numbers every gap, so the prompt must use the same numbers
+      const passageEl = gapEl.closest('.mm_blockText, .mm_interactive') as HTMLElement | null;
+      const hasPassage = !!passageEl && passageEl !== parentSentence;
+      const isMultiGap = gapsInSentence.length > 1 || hasPassage;
       const currentGapId = gapEl.getAttribute('data-rcfid');
       if (isMultiGap) {
         gapsInSentence.forEach((g) => {
