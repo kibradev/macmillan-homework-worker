@@ -34,7 +34,7 @@ const gap = (n, texts) =>
 
 const PLAYER = `<!doctype html><html><head><meta charset="utf-8"><title>rcf-player</title>
 <script src="/vendor/jquery.js"></script><script src="/vendor/jquery-ui.js"></script>
-<style>.ui-selectmenu-button{display:inline-block;min-width:130px;border:1px solid #999;padding:2px 8px;margin:0 4px}.rcfOrderingContainer{list-style:none;display:flex;gap:8px;padding:12px 0;margin:0}.orderingItem{padding:8px 14px;border:2px solid #3C6ED2;border-radius:4px;background:#fff;cursor:grab;user-select:none}.orderingItem.fixed{border-color:#999;cursor:default}</style></head>
+<style>.ui-selectmenu-button{display:inline-block;min-width:130px;border:1px solid #999;padding:2px 8px;margin:0 4px}.rcfOrderingContainer{list-style:none;display:flex;gap:8px;padding:12px 0;margin:0}.orderingItem{padding:8px 14px;border:2px solid #3C6ED2;border-radius:4px;background:#fff;cursor:grab;user-select:none}.orderingItem.fixed{border-color:#999;cursor:default}.itemSentenceWordList{list-style:none;display:flex;gap:6px;min-height:44px;width:560px;margin:8px 0;padding:6px;border:2px dashed #3C6ED2}.wordBox ul{list-style:none;display:flex;gap:8px;padding:0;margin:8px 0}.wordBox li,.itemSentenceWordList li{padding:6px 12px;border:1px solid #999;border-radius:4px;background:#fff;cursor:grab}</style></head>
 <body id="player-body"><div class="dev-rcf-content activity mm_C04" data-interactions="rcfDropDown">
 <form onsubmit="return false"><div class="rubricContainer"><div class="rubric"><div class="rubricBody"><p>Choose the correct option to complete the email.</p></div></div></div>
 <div class="main"><div class="block mm_interactive"><div class="block mm_blockText">
@@ -44,8 +44,21 @@ const PLAYER = `<!doctype html><html><head><meta charset="utf-8"><title>rcf-play
 </div></div></div>
 <div class="block mm_interactive"><div class="orderingContainer" data-rcfinteraction="ordering" data-rcfid="ordering_1" aria-orientation="horizontal"><span class="ordering horizontal"><ul class="ordering rcfOrderingContainer ui-sortable">
 <li data-rcfid="item_5" class="orderingItem" data-ordervalue="me">me</li><li data-rcfid="item_6" class="orderingItem" data-ordervalue="a">a</li><li data-rcfid="item_7" class="orderingItem" data-ordervalue="hand">hand</li><li data-rcfid="item_3" class="orderingItem" data-ordervalue="mind">mind</li><li data-rcfid="item_1" class="orderingItem" data-ordervalue="Would">Would</li><li data-rcfid="item_2" class="orderingItem" data-ordervalue="you">you</li><li data-rcfid="item_4" class="orderingItem" data-ordervalue="giving">giving</li><li class="suffix fixed orderingItem" data-fixed="y">?</li>
-</ul></span></div></div></form></div>
-<script>$('select').selectmenu(); $('ul.rcfOrderingContainer').sortable({ items: '> li:not(.fixed)', axis: 'x' });</script></body></html>`;
+</ul></span></div></div>
+<div class="block itemBasedItem" data-rcfid="ib_5"><div class="itemRubric"><p>Complete the sentence.</p></div><div class="interactive mm_blockText"><p>Your hair <span data-rcfid="itemTypein_1" data-rcfinteraction="markedTextInput" class="typein itemTypein"><span class="markable"><input type="text" class="text markedTextInput"></span></span> great in that style.</p></div></div>
+<div class="block itemBasedItem" data-rcfid="ib_9"><div class="itemRubric"><p>Make a sentence using as many words as possible.</p></div>
+<div data-rcfinteraction="itemSentenceBuilder" data-rcfid="isb_1" class="sentenceBuilderContainer"><div class="itemSentenceBuilder sentenceBuilder"><ul class="itemSentenceWordList sentenceWordList"></ul></div>
+<div class="itemSentenceBuilderWordBox wordBox"><ul>
+<li data-rcfid="item_5" class="dragItem" data-originalvalue="a">a</li><li data-rcfid="item_2" class="dragItem" data-originalvalue="thinking">thinking</li><li data-rcfid="item_7" class="dragItem" data-originalvalue="car">car</li><li data-rcfid="item_4" class="dragItem" data-originalvalue="buying">buying</li><li data-rcfid="item_6" class="dragItem" data-originalvalue="new">new</li><li data-rcfid="item_1" class="dragItem" data-originalvalue="we're">we're</li><li data-rcfid="item_8" class="dragItem" data-originalvalue=".">.</li><li data-rcfid="item_3" class="dragItem" data-originalvalue="about">about</li>
+</ul></div></div></div>
+</form></div>
+<script>
+  $('select').selectmenu();
+  $('ul.rcfOrderingContainer').sortable({ items: '> li:not(.fixed)', axis: 'x' });
+  // Clicking a bank word does nothing here: only a real drag into the sentence works (draggable connected to a sortable)
+  $('.wordBox li').draggable({ connectToSortable: '.itemSentenceWordList', helper: 'clone', revert: 'invalid' });
+  $('.itemSentenceWordList').sortable({ revert: true });
+</script></body></html>`;
 
 const TOP = `<!doctype html><html><head><meta charset="utf-8"><title>Macmillan Education Everywhere (test shell)</title>
 <style>body{margin:0;font-family:'Open Sans',Arial,sans-serif;background:#ECF1FB}iframe{width:100%;height:520px;border:0;background:#fff}</style></head>
@@ -138,7 +151,11 @@ try {
       suggestedAnswer:
         q.type === 'ordering'
           ? q.options.map((o) => o.label).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())).join(' || ')
-          : q.options[1].label,
+          : q.type === 'fill_in_the_blank'
+            ? 'looks'
+            : q.type === 'sentence_builder'
+              ? ["we're", 'thinking', 'about', 'buying', 'a', 'new', 'car', '.'].join(' || ')
+              : q.options[1].label,
       confidence: 0.9,
       explanation: 'e2e',
     }));
@@ -221,15 +238,21 @@ try {
     order.join(' ')
   );
   const ids = aiRequests[0] ? [...aiRequests[0].matchAll(/"questionId": "([^"]+)"/g)].map((m) => m[1]) : [];
-  check('every question in the prompt has its own id (dropdowns and ordering on one page)', ids.length === 4 && new Set(ids).size === 4, ids.join(', '));
+  check('every question in the prompt has its own id (five kinds of question on one page)', ids.length === 6 && new Set(ids).size === 6, ids.join(', '));
+  const typed = await frame.evaluate(() => document.querySelector('input.markedTextInput').value);
+  check('the typed gap received its answer', typed === 'looks', typed);
+  const sentence = await frame.evaluate(() => Array.from(document.querySelectorAll('.itemSentenceWordList li')).map((li) => li.textContent.trim()).filter(Boolean).join(' '));
+  check('the sentence builder was filled by real drags into the sortable (a click alone does nothing here)', sentence === "we're thinking about buying a new car .", sentence);
 
   const panel = await shadow(`(r) => ({ rows: r.querySelectorAll('.sp-item').length, marks: Array.from(r.querySelectorAll('.sp-mark')).map((m) => m.textContent), answers: Array.from(r.querySelectorAll('.sp-answer')).map((i) => i.value) })`);
-  check('the panel lists the 4 questions, all marked as filled', panel.rows === 4 && panel.marks.every((m) => m === '✓'), JSON.stringify(panel));
+  check('the panel lists the 6 questions, all marked as filled', panel.rows === 6 && panel.marks.every((m) => m === '✓'), JSON.stringify(panel));
   await page.screenshot({ path: join(shotDir, 'e2e-3-panel.png') });
 
   // ---- a second page: the old answers must not be reused ------------------------------------------------------
   await frame.evaluate(() => {
     document.querySelectorAll('select').forEach((s) => { s.selectedIndex = 0; $(s).selectmenu('refresh'); });
+    document.querySelector('input.markedTextInput').value = '';
+    document.querySelector('.itemSentenceWordList').innerHTML = '';
     const ul = document.querySelector('[data-rcfid="ordering_1"] ul');
     Array.from(ul.querySelectorAll('li:not(.fixed)')).reverse().forEach((li) => ul.insertBefore(li, ul.querySelector('li.fixed')));
   });
@@ -276,10 +299,12 @@ try {
     id: document.querySelector('[data-rcfxmlid]').getAttribute('data-rcfxmlid'),
     gaps: Array.from(document.querySelectorAll('select')).map((sel) => sel.options[sel.selectedIndex].text),
     order: Array.from(document.querySelectorAll('[data-rcfid="ordering_1"] li')).map((li) => li.textContent).join(' '),
+    typed: document.querySelector('input.markedTextInput').value,
+    sentence: Array.from(document.querySelectorAll('.itemSentenceWordList li')).map((li) => li.textContent.trim()).filter(Boolean).join(' '),
   }));
   check(
-    'the last activity (3) is filled too: gaps and word order',
-    lastState.id === 'activity-3' && JSON.stringify(lastState.gaps) === JSON.stringify(['analysed', 'solve', 'deal with']) && lastState.order === 'a giving hand me mind Would you ?',
+    'the last activity (3) is filled too: gaps, word order, typed gap and sentence',
+    lastState.id === 'activity-3' && JSON.stringify(lastState.gaps) === JSON.stringify(['analysed', 'solve', 'deal with']) && lastState.order === 'a giving hand me mind Would you ?' && lastState.typed === 'looks' && lastState.sentence === "we're thinking about buying a new car .",
     JSON.stringify(lastState)
   );
   await course.screenshot({ path: join(shotDir, 'e2e-4-series.png') });

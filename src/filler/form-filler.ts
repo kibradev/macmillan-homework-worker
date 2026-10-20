@@ -107,29 +107,10 @@ export function findOptionIndex(options: ArrayLike<{ value: string; text: string
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/**
- * Drags `item` onto the place of `destination` with real mouse events (mousedown, a few mousemoves, mouseup):
- * what a jQuery UI sortable listens to. The pointer ends slightly past the destination's centre so it swaps.
- */
-async function dragOntoItem(item: HTMLElement, destination: HTMLElement): Promise<void> {
+/** Presses `item`, moves the pointer to `end` in a few steps and releases: the events a jQuery UI draggable/sortable listens to. */
+async function mouseDrag(item: HTMLElement, from: { x: number; y: number }, end: { x: number; y: number }): Promise<void> {
   const doc = item.ownerDocument;
   const view = (doc.defaultView || window) as any;
-  item.scrollIntoView?.({ block: 'center', inline: 'center' });
-
-  const centre = (el: HTMLElement) => {
-    const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
-  };
-  const from = centre(item);
-  const to = centre(destination);
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const horizontal = Math.abs(dx) >= Math.abs(dy);
-  const end = {
-    x: to.x + (horizontal ? Math.sign(dx) * to.w * 0.25 : 0),
-    y: to.y + (horizontal ? 0 : Math.sign(dy) * to.h * 0.25),
-  };
-
   const fire = (target: EventTarget, type: string, point: { x: number; y: number }, buttons: number) =>
     target.dispatchEvent(
       new MouseEvent(type, {
@@ -157,6 +138,35 @@ async function dragOntoItem(item: HTMLElement, destination: HTMLElement): Promis
   }
   fire(doc, 'mouseup', end, 0);
   await sleep(150);
+}
+
+const centreOf = (el: HTMLElement) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, right: r.right };
+};
+
+/**
+ * Drags `item` onto the place of `destination`. The pointer ends slightly past the destination's centre so it swaps.
+ */
+async function dragOntoItem(item: HTMLElement, destination: HTMLElement): Promise<void> {
+  item.scrollIntoView?.({ block: 'center', inline: 'center' });
+  const from = centreOf(item);
+  const to = centreOf(destination);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const end = {
+    x: to.x + (horizontal ? Math.sign(dx) * to.w * 0.25 : 0),
+    y: to.y + (horizontal ? 0 : Math.sign(dy) * to.h * 0.25),
+  };
+  await mouseDrag(item, from, end);
+}
+
+/** Drops `item` at the far end of `list`, where a new word is appended. */
+async function dragItemToEndOf(item: HTMLElement, list: HTMLElement): Promise<void> {
+  item.scrollIntoView?.({ block: 'center', inline: 'center' });
+  const to = centreOf(list);
+  await mouseDrag(item, centreOf(item), { x: to.right - 4, y: to.y });
 }
 
 /**
@@ -223,6 +233,92 @@ async function fillOrdering(
     success: false,
     error: `Kelimeler sürüklenemedi. Şu anki sıra: ${itemsNow().map((li) => li.textContent?.trim()).join(' ')}`,
   };
+}
+
+/** Key of a word-bank entry. Punctuation marks (".", "?") are words too and must not normalise to nothing. */
+function wordKey(text: string): string {
+  return normalizeOptionText(text) || text.trim();
+}
+
+/**
+ * Builds a sentence from the word bank ("we're || thinking || about || ... || ."). Each word is added with a click
+ * first (what the touch layout of the activity uses) and, if the sentence does not grow, by dragging it into the list.
+ * After every word the sentence is read back, so a page that ignores both is reported instead of "succeeding".
+ */
+async function fillSentenceBuilder(
+  doc: Document,
+  question: Question,
+  approvedAnswer: string
+): Promise<{ success: boolean; error?: string }> {
+  const selector = question.fields[0]?.selector || question.metadata?.containerSelector || '';
+  const container = selector ? findDeepElement(doc, selector) : null;
+  const list = container?.querySelector('.sentenceBuilder ul, ul.sentenceWordList, ul.itemSentenceWordList') as HTMLElement | null;
+  if (!container || !list) {
+    return { success: false, error: `Cümle alanı bulunamadı (soru ${question.index}).` };
+  }
+
+  const placed = () =>
+    (Array.from(list.children).filter((node) => node.matches('li')) as HTMLElement[])
+      .map((li) => wordKey(li.getAttribute('data-originalvalue') || li.textContent || ''))
+      .filter(Boolean);
+  const bankItems = () => Array.from(container.querySelectorAll('.wordBox li')) as HTMLElement[];
+  const textOf = (li: HTMLElement) => wordKey(li.getAttribute('data-originalvalue') || li.textContent || '');
+
+  // Messages quote the words the way the learner sees them, matching uses the normalised keys
+  const spoken = approvedAnswer
+    .split('||')
+    .map((part) => part.trim())
+    .filter((part) => wordKey(part));
+  const wanted = spoken.map(wordKey);
+  if (wanted.length === 0) return { success: false, error: 'Cevapta kelime yok.' };
+
+  // Words already in the sentence (a second run) must be a prefix of the answer; anything else is left alone
+  const already = placed();
+  if (already.length > wanted.length || already.some((word, i) => word !== wanted[i])) {
+    return { success: false, error: 'Cümle alanında zaten başka kelimeler var; önce onları temizle.' };
+  }
+  if (already.length === wanted.length) {
+    flashHighlight(container);
+    return { success: true };
+  }
+
+  // Map each remaining word to a distinct, still available bank entry
+  const taken = new Set<HTMLElement>();
+  const plan: HTMLElement[] = [];
+  for (const [position, word] of wanted.slice(already.length).entries()) {
+    const entry = bankItems().find((li) => !taken.has(li) && !li.classList.contains('dragged') && textOf(li) === word);
+    if (!entry) return { success: false, error: `"${spoken[already.length + position]}" kelime listesinde yok ya da zaten kullanılmış.` };
+    taken.add(entry);
+    plan.push(entry);
+  }
+
+  const grewTo = async (count: number) => {
+    for (let waited = 0; waited < 800; waited += 100) {
+      if (placed().length >= count) return true;
+      await sleep(100);
+    }
+    return placed().length >= count;
+  };
+
+  for (const [offset, entry] of plan.entries()) {
+    const target = already.length + offset + 1;
+    entry.scrollIntoView?.({ block: 'center', inline: 'center' });
+
+    entry.click();
+    if (!(await grewTo(target))) {
+      await dragItemToEndOf(entry, list);
+      if (!(await grewTo(target))) {
+        return { success: false, error: `"${spoken[target - 1]}" cümleye eklenemedi (tıklama ve sürükleme işe yaramadı).` };
+      }
+    }
+  }
+
+  const final = placed();
+  if (final.length === wanted.length && final.every((word, i) => word === wanted[i])) {
+    flashHighlight(container);
+    return { success: true };
+  }
+  return { success: false, error: `Cümle beklenenden farklı çıktı: ${final.join(' ')}` };
 }
 
 /** Ticks every option named in a multiple_select answer ("A || B || C"); options already ticked are left alone. */
@@ -292,6 +388,11 @@ export async function fillFormField(
   // Word-ordering lists are rearranged by dragging
   if (question.type === 'ordering') {
     return fillOrdering(doc, question, approvedAnswer);
+  }
+
+  // Sentence builders (item-based): words go from the bank into the sentence
+  if (question.type === 'sentence_builder') {
+    return fillSentenceBuilder(doc, question, approvedAnswer);
   }
 
   // 1. If this is a Dropdown question, handle select element directly!

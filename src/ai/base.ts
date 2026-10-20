@@ -29,7 +29,11 @@ RULES:
    - suggestedAnswer lists EVERY movable word exactly once, exactly as given (repeated words repeated), in the correct order,
      separated by " || " (space, two pipes, space). Fixed items named in the prompt are not part of the answer.
    - Example: "Would || you || mind || giving || me || a || hand"
-8. Return your response as a valid JSON object strictly matching this schema:
+8. For sentence_builder questions (build a sentence from a word bank):
+   - suggestedAnswer lists the words to use, exactly as given, in the correct order, separated by " || ".
+     Punctuation marks are words too. Use as many words as make a correct sentence; each word at most once.
+   - Example: "we're || thinking || about || buying || a || new || car || ."
+9. Return your response as a valid JSON object strictly matching this schema:
 {
   "suggestions": [
     {
@@ -40,7 +44,7 @@ RULES:
     }
   ]
 }
-9. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
+10. Do NOT include markdown code blocks around the JSON if the API supports raw JSON, or ensure the JSON is directly parseable.`;
 
 export function buildQuestionsPrompt(questions: Question[]): string {
   // A reading text, transcript or full email is identical for every question of an activity. Send it once

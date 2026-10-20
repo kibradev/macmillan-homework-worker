@@ -6,6 +6,7 @@ export type QuestionType =
   | 'matching'
   | 'multiple_select'
   | 'ordering'
+  | 'sentence_builder'
   | 'unknown';
 
 /** Separates the option texts of a multiple_select answer, e.g. "Option A || Option C". */

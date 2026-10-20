@@ -261,6 +261,22 @@ export function findGlossaryData(doc: Document | Element): string | undefined {
   return undefined;
 }
 
+/**
+ * Item-based activities wrap every question in `.itemBasedItem` with its own instruction line and, often, an audio clip.
+ * The instruction makes short questions answerable; the audio cannot be heard, so the AI is told to rely on the text.
+ */
+function itemContext(el: Element): string | undefined {
+  const item = el.closest('.itemBasedItem');
+  if (!item) return undefined;
+  const parts: string[] = [];
+  const rubric = cleanText(item.querySelector('.itemRubric')?.textContent);
+  if (rubric) parts.push(`[Instructions]: ${rubric}`);
+  if (item.querySelector('[data-rcfinteraction="inlineAudioElement"]')) {
+    parts.push('[Note: this item has audio that cannot be heard and no transcript is available. Answer from the visible text, grammar and meaning.]');
+  }
+  return parts.join('\n\n') || undefined;
+}
+
 /** Stack of the last exception swallowed by extractQuestionsFromGenericDOM (reported by the page inspector). */
 let lastScannerError: string | undefined;
 
@@ -503,7 +519,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
         let promptText = cleanText(clone.textContent);
         if (!promptText) {
           // Macmillan keeps the question in a sibling <div class="prompt"> inside the same list item
-          const item = group.closest('li, .item, .sentence') as HTMLElement | null;
+          const item = group.closest('li, .item, .sentence, .itemBasedItem') as HTMLElement | null;
           if (item) {
             const itemClone = item.cloneNode(true) as HTMLElement;
             itemClone.querySelectorAll('.radioItemSelect, [class*="radioItemSelect"], .checkboxItemSelect, [class*="checkboxItemSelect"], .feedback, .dev-feedback, button').forEach((n) => n.remove());
@@ -544,7 +560,10 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
             index: rIndex,
             type: isCheckboxGroup ? 'multiple_select' : 'multiple_choice',
             promptText,
-            contextText: isCheckboxGroup && rubricText && rubricText !== promptText ? `[Instructions]: ${rubricText}` : undefined,
+            contextText:
+              [isCheckboxGroup && rubricText && rubricText !== promptText ? `[Instructions]: ${rubricText}` : '', itemContext(group) ?? '']
+                .filter(Boolean)
+                .join('\n\n') || undefined,
             options,
             fields,
             metadata: {
@@ -611,6 +630,84 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       metadata: { containerSelector: getUniqueCssSelector(container) },
     });
     orderIndex++;
+  }
+
+  // 2c. FIRST-CLASS MACMILLAN TYPED GAPS (markedTextInput): the learner types the missing word(s).
+  // data-longestitem (the length of the longest accepted answer) is an answer hint and is deliberately not read.
+  const typeinContainers = Array.from(doc.querySelectorAll('[data-rcfinteraction="markedTextInput"]')) as HTMLElement[];
+  let typeIndex = 1;
+  for (const container of typeinContainers) {
+    const input = container.querySelector('input') as HTMLInputElement | null;
+    if (!input) continue;
+
+    const sentenceEl = (container.closest('p, li, .sentence, .item') as HTMLElement | null) || container.parentElement || container;
+    const sentenceClone = sentenceEl.cloneNode(true) as HTMLElement;
+    const gapsHere = Array.from(sentenceClone.querySelectorAll('[data-rcfinteraction="markedTextInput"]'));
+    const gapNo = Array.from(sentenceEl.querySelectorAll('[data-rcfinteraction="markedTextInput"]')).indexOf(container) + 1;
+    gapsHere.forEach((gap, i) => {
+      const label = gapsHere.length > 1 ? ` [BLANK ${i + 1}] ` : ' [_____] ';
+      gap.replaceWith(sentenceClone.ownerDocument.createTextNode(label));
+    });
+    sentenceClone.querySelectorAll('button, .feedback, .dev-feedback').forEach((n) => n.remove());
+    const sentence = cleanText(sentenceClone.textContent).replace(/\s+([.,!?;:])/g, '$1');
+
+    questions.push({
+      id: `q_${typeIndex}`,
+      index: typeIndex,
+      type: 'fill_in_the_blank',
+      promptText:
+        `Complete the sentence by typing the missing word(s): "${sentence}"` +
+        (gapsHere.length > 1 ? ` (Answer ONLY for [BLANK ${gapNo}])` : ''),
+      contextText: itemContext(container),
+      fields: [
+        {
+          id: `field_typein_${typeIndex}`,
+          selector: getUniqueCssSelector(input),
+          fieldType: 'input',
+          name: container.getAttribute('data-rcfid') || `typein_${typeIndex}`,
+          label: 'Typed answer',
+        },
+      ],
+      metadata: { containerSelector: getUniqueCssSelector(container) },
+    });
+    typeIndex++;
+  }
+
+  // 2d. FIRST-CLASS MACMILLAN SENTENCE BUILDER (item-based): put words from a bank into a sentence.
+  // The authored order (data-origindex) is the answer key and is never read.
+  const builderContainers = Array.from(doc.querySelectorAll('[data-rcfinteraction="itemSentenceBuilder"]')) as HTMLElement[];
+  let builderIndex = 1;
+  for (const container of builderContainers) {
+    const bankItems = Array.from(container.querySelectorAll('.wordBox li.dragItem, .wordBox li')) as HTMLElement[];
+    if (bankItems.length < 2) continue;
+    const wordOf = (li: HTMLElement) => cleanText(li.getAttribute('data-originalvalue') || li.textContent);
+
+    questions.push({
+      id: `q_${builderIndex}`,
+      index: builderIndex,
+      type: 'sentence_builder',
+      promptText:
+        `Build a correct sentence or question from these words: ${bankItems.map(wordOf).join(' / ')}. ` +
+        'Answer with the words you use, in order, separated by " || " (punctuation marks count as words).',
+      contextText: itemContext(container),
+      options: bankItems.map((li, i) => ({
+        id: `opt_${builderIndex}_${i}`,
+        label: wordOf(li),
+        value: li.getAttribute('data-rcfid') || wordOf(li),
+        elementSelector: getUniqueCssSelector(li),
+      })),
+      fields: [
+        {
+          id: `field_builder_${builderIndex}`,
+          selector: getUniqueCssSelector(container),
+          fieldType: 'input',
+          name: container.getAttribute('data-rcfid') || `builder_${builderIndex}`,
+          label: 'Sentence builder',
+        },
+      ],
+      metadata: { containerSelector: getUniqueCssSelector(container) },
+    });
+    builderIndex++;
   }
 
   // 2. FIRST-CLASS MACMILLAN DRAG & DROP / CLICK-AND-STICK (.clickAndStickable, .dragTarget)
@@ -909,6 +1006,20 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
     // Keep whatever was extracted before the failure instead of reporting an empty page
     lastScannerError = (err as Error).stack || String(err);
     console.warn('[StudyPilot] Scanner block failed, returning partial results:', err);
+  }
+
+  // Blocks run one kind after the other, but learners (and the panel) expect the page's own order
+  const elementOf = (q: Question) => {
+    try {
+      return q.fields[0]?.selector ? doc.querySelector(q.fields[0].selector) : null;
+    } catch {
+      return null;
+    }
+  };
+  const located = questions.map((q) => ({ q, el: elementOf(q) }));
+  if (located.length > 1 && located.every((entry) => entry.el)) {
+    located.sort((a, b) => (a.el === b.el ? 0 : a.el!.compareDocumentPosition(b.el!) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    questions.splice(0, questions.length, ...located.map((entry) => entry.q));
   }
 
   // Each block numbers its questions from 1, so a page that mixes kinds of question would repeat ids (q_1 twice)

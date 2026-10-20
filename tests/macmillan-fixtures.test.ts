@@ -760,3 +760,151 @@ test('Macmillan click-and-stick - a phrase that is not in the bank, or a page th
   const result = await fillFormField(deaf, extractQuestionsFromGenericDOM(deaf)[0], "You'll never guess");
   assert.equal(result.success, false, 'success must be verified, not assumed');
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Item-based activities: radio + typed gaps + sentence builder on one page
+
+test('Macmillan item-based page - every item is found in page order, with its own instruction and prompt', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-itembased.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.deepEqual(qs.map((q) => q.type), ['multiple_choice', 'multiple_choice', 'fill_in_the_blank', 'fill_in_the_blank', 'sentence_builder']);
+  assert.equal(new Set(qs.map((q) => q.id)).size, 5, 'ids stay unique across the three kinds');
+
+  // Radio: the question is a picture, the only text is the item's instruction
+  assert.equal(qs[0].promptText, 'Choose the correct option.');
+  assert.deepEqual(qs[0].options?.map((o) => o.label), ["He's visiting his grandmother once a week.", 'He visits his grandmother once a week.']);
+  assert.match(qs[0].contextText ?? '', /^\[Instructions\]: Choose the correct option\./);
+
+  // Typed gap: the sentence with a placeholder, the instruction, and an honest note about the audio nobody can hear
+  assert.equal(qs[2].promptText, 'Complete the sentence by typing the missing word(s): "Your hair [_____] great in that style."');
+  assert.match(qs[2].contextText ?? '', /\[Instructions\]: Complete the sentence\./);
+  assert.match(qs[2].contextText ?? '', /audio that cannot be heard and no transcript is available/);
+  assert.doesNotMatch(qs[3].contextText ?? '', /cannot be heard/, 'only items that have audio get the note');
+  assert.equal(qs[2].fields[0].fieldType, 'input');
+
+  // Sentence builder: the words of the bank, in the order the page shows them
+  assert.deepEqual(qs[4].options?.map((o) => o.label), ['a', 'thinking', 'car', 'buying', 'new', "we're", '.', 'about']);
+  assert.match(qs[4].promptText, /Build a correct sentence or question from these words: a \/ thinking \/ car/);
+  assert.match(qs[4].contextText ?? '', /Make a sentence using as many words as possible\./);
+
+  // Answer hints in the markup are never read
+  assert.doesNotMatch(JSON.stringify(qs), /origindex|longestitem|data-sortindex/);
+
+  for (const q of qs) {
+    for (const f of q.fields) assert.equal(doc.querySelectorAll(f.selector).length, 1, f.selector);
+    for (const o of q.options ?? []) assert.equal(doc.querySelectorAll(o.elementSelector!).length, 1, o.elementSelector);
+  }
+
+  const report = inspectRcfPage(doc);
+  assert.equal(report.questionsDetected, 5);
+  assert.equal(report.interactions.find((i) => i.type === 'markedTextInput')?.status, 'supported');
+  assert.equal(report.interactions.find((i) => i.type === 'itemSentenceBuilder')?.status, 'supported');
+  assert.deepEqual(report.warnings, []);
+});
+
+test('Macmillan item-based page - typed gaps are filled and the page is told about it', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-itembased.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+  const inputs = Array.from(doc.querySelectorAll('input.markedTextInput')) as HTMLInputElement[];
+  const heard: string[] = [];
+  inputs.forEach((input) => input.addEventListener('input', () => heard.push(input.value)));
+
+  assert.equal((await fillFormField(doc, qs[2], 'looks')).success, true);
+  assert.equal((await fillFormField(doc, qs[3], 'far')).success, true);
+
+  assert.deepEqual(inputs.map((i) => i.value), ['looks', 'far']);
+  assert.ok(heard.includes('looks') && heard.includes('far'), 'the page receives input events, not just a changed value');
+});
+
+const sentenceOf = (doc: Document) =>
+  Array.from(doc.querySelectorAll('.itemSentenceWordList li')).map((li) => li.textContent!.trim());
+
+/** Stand-in for the sentence builder. mode "click": a click on a bank word appends it. mode "drag": only a drop over the list does. */
+function makeSentenceBuilder(doc: Document, mode: 'click' | 'drag' | 'none') {
+  const list = doc.querySelector('.itemSentenceWordList') as HTMLElement;
+  list.textContent = ''; // the "&nbsp;" placeholder
+  const rect = (left: number, width: number) => ({ left, top: 0, width, height: 30, right: left + width, bottom: 30, x: left, y: 0, toJSON() {} }) as DOMRect;
+  (list as any).getBoundingClientRect = () => rect(0, 500);
+  const add = (word: HTMLElement) => {
+    const li = doc.createElement('li');
+    li.textContent = word.textContent;
+    li.setAttribute('data-originalvalue', word.getAttribute('data-originalvalue') || word.textContent || '');
+    list.appendChild(li);
+    word.classList.add('dragged');
+  };
+  let pressed: HTMLElement | null = null;
+  doc.querySelectorAll('.wordBox li').forEach((word, i) => {
+    (word as any).getBoundingClientRect = () => rect(600 + i * 60, 50);
+    word.addEventListener('click', () => {
+      if (mode === 'click' && !word.classList.contains('dragged')) add(word as HTMLElement);
+    });
+    word.addEventListener('mousedown', () => (pressed = word as HTMLElement));
+  });
+  doc.addEventListener('mouseup', (e) => {
+    const x = (e as MouseEvent).clientX;
+    if (mode === 'drag' && pressed && x >= 0 && x <= 500) add(pressed);
+    pressed = null;
+  });
+}
+
+const BUILDER_ANSWER = ["we're", 'thinking', 'about', 'buying', 'a', 'new', 'car', '.'].join(' || ');
+
+test('Macmillan sentence builder - words are added by clicking, in order, punctuation included', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-itembased.html');
+  makeSentenceBuilder(doc, 'click');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  const result = await fillFormField(doc, qs[4], BUILDER_ANSWER);
+
+  assert.equal(result.success, true, result.error);
+  assert.deepEqual(sentenceOf(doc), ["we're", 'thinking', 'about', 'buying', 'a', 'new', 'car', '.']);
+});
+
+test('Macmillan sentence builder - when clicking does nothing, the words are dragged into the sentence', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-itembased.html');
+  makeSentenceBuilder(doc, 'drag');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  const result = await fillFormField(doc, qs[4], ['a', 'new', 'car'].join(' || ')); // a subset is fine: "as many as possible"
+
+  assert.equal(result.success, true, result.error);
+  assert.deepEqual(sentenceOf(doc), ['a', 'new', 'car']);
+});
+
+test('Macmillan sentence builder - a second run leaves a finished sentence alone, and bad answers are refused', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-itembased.html');
+  makeSentenceBuilder(doc, 'click');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal((await fillFormField(doc, qs[4], BUILDER_ANSWER)).success, true);
+  const again = await fillFormField(doc, qs[4], BUILDER_ANSWER);
+  assert.equal(again.success, true);
+  assert.equal(sentenceOf(doc).length, 8, 'nothing was added twice');
+
+  const other = loadFixture('tests/fixtures/macmillan-itembased.html');
+  makeSentenceBuilder(other, 'click');
+  const otherQs = extractQuestionsFromGenericDOM(other);
+  const stranger = await fillFormField(other, otherQs[4], 'we’re || flying');
+  assert.equal(stranger.success, false);
+  assert.match(stranger.error ?? '', /"flying" kelime listesinde yok ya da zaten kullanılmış/);
+  assert.deepEqual(sentenceOf(other), [], 'a refused answer places nothing');
+
+  const clash = loadFixture('tests/fixtures/macmillan-itembased.html');
+  makeSentenceBuilder(clash, 'click');
+  clash.querySelector('.itemSentenceWordList')!.insertAdjacentHTML('beforeend', '<li data-originalvalue="car">car</li>');
+  const clashResult = await fillFormField(clash, extractQuestionsFromGenericDOM(clash)[4], BUILDER_ANSWER);
+  assert.equal(clashResult.success, false);
+  assert.match(clashResult.error ?? '', /zaten başka kelimeler var/);
+});
+
+test('Macmillan sentence builder - a page that ignores clicks and drags is reported, not assumed to work', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-itembased.html');
+  makeSentenceBuilder(doc, 'none');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  const result = await fillFormField(doc, qs[4], "we're || thinking");
+
+  assert.equal(result.success, false);
+  assert.match(result.error ?? '', /"we're" cümleye eklenemedi \(tıklama ve sürükleme işe yaramadı\)/);
+});
