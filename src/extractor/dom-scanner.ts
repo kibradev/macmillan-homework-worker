@@ -367,6 +367,46 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       clone.querySelectorAll('.locating_popup, .textControls, button, a.okButton, a.cancelButton, [style*="display: none"], .markable, .locating_answer').forEach((n) => n.remove());
       const promptText = cleanText(clone.textContent) || `Sentence #${locIndex}`;
 
+      // Variant B: the learner picks the replacement from a popup list (.locatingSpanPopup) instead of typing it
+      const popupChoices = Array.from(locEl.querySelectorAll('.locating_popup .locatingSpanPopup:not(.clear)')) as HTMLElement[];
+      if (popupChoices.length > 0) {
+        const currentId = locEl.getAttribute('data-rcfid');
+        const sentenceClone = parentSentence.cloneNode(true) as HTMLElement;
+        sentenceClone.querySelectorAll('.locating').forEach((node) => {
+          const word = cleanText(node.querySelector('.locatingItem')?.textContent);
+          const marked = node.getAttribute('data-rcfid') === currentId;
+          node.replaceWith(sentenceClone.ownerDocument.createTextNode(marked ? ` [${word}] ` : ` ${word} `));
+        });
+        const sentence = cleanText(sentenceClone.textContent).replace(/\s+([.,!?;:])/g, '$1');
+
+        questions.push({
+          id: `q_${locIndex}`,
+          index: locIndex,
+          type: 'dropdown',
+          promptText: `The phrase in square brackets is a mistake. Choose the option that corrects it: "${sentence}"`,
+          options: popupChoices
+            .map((choice, cIdx) => ({
+              id: `opt_${locIndex}_${cIdx}`,
+              label: cleanText(choice.textContent),
+              value: choice.getAttribute('data-rcfid') || cleanText(choice.textContent),
+            }))
+            .filter((o) => o.label),
+          fields: [
+            {
+              id: `field_locating_${locIndex}`,
+              selector: getUniqueCssSelector(clickTarget),
+              fieldType: 'input',
+              name: currentId || `locating_${locIndex}`,
+              label: incorrectWordText,
+              currentValue: incorrectWordText,
+            },
+          ],
+          metadata: { containerSelector: getUniqueCssSelector(locEl) },
+        });
+        locIndex++;
+        continue;
+      }
+
       const fieldRef: FormFieldRef = {
         id: `field_locating_${locIndex}`,
         selector: getUniqueCssSelector(clickTarget),

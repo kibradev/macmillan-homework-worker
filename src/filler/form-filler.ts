@@ -358,6 +358,57 @@ async function revealWordBoxItem(wordBox: HTMLElement, word: HTMLElement): Promi
   }
 }
 
+/**
+ * Macmillan "locating" with a choice list: click the wrong phrase to open its popup, then click the right option.
+ * The popup toggles, so every step is a single click and the outcome is verified instead of clicking blindly.
+ */
+async function pickLocatingChoice(root: HTMLElement, openTarget: HTMLElement, answer: string): Promise<boolean> {
+  const wanted = normalizeOptionText(answer);
+  const choices = Array.from(root.querySelectorAll('.locatingSpanPopup:not(.clear)')) as HTMLElement[];
+  const choice =
+    choices.find((c) => normalizeOptionText(c.textContent || '') === wanted) ||
+    choices.find((c) => wanted.length > 3 && normalizeOptionText(c.textContent || '').includes(wanted));
+  if (!choice) {
+    console.warn('[StudyPilot] locating: no popup option matches', answer);
+    return false;
+  }
+
+  const answerEl = root.querySelector('.locating_answer');
+  const chosenText = normalizeOptionText(choice.textContent || '');
+  // Without a visible answer slot there is nothing to verify against
+  const isDone = () => !answerEl || normalizeOptionText(answerEl.textContent || '') === chosenText;
+  if (isDone() && answerEl && (answerEl.textContent || '').trim()) return true;
+
+  const view = (root.ownerDocument.defaultView || window) as any;
+  const press = (el: HTMLElement) => {
+    const init = { bubbles: true, cancelable: true, view };
+    el.dispatchEvent(new PointerEvent('pointerdown', init));
+    el.dispatchEvent(new MouseEvent('mousedown', init));
+    el.dispatchEvent(new PointerEvent('pointerup', init));
+    el.dispatchEvent(new MouseEvent('mouseup', init));
+    el.dispatchEvent(new MouseEvent('click', init));
+  };
+
+  // 1. open the popup with one click, then click the option once
+  openTarget.click();
+  await new Promise((r) => setTimeout(r, 200));
+  choice.click();
+  await new Promise((r) => setTimeout(r, 300));
+  if (isDone()) {
+    flashHighlight(openTarget);
+    return true;
+  }
+
+  // 2. the popup is open by now: retry the option with a full pointer sequence
+  press(choice);
+  await new Promise((r) => setTimeout(r, 300));
+  if (isDone()) {
+    flashHighlight(openTarget);
+    return true;
+  }
+  return false;
+}
+
 export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAnswer: string): Promise<boolean> {
   const safety = validateElementSafety(el);
   if (!safety.isSafe) {
@@ -585,6 +636,12 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
         return true;
       }
     }
+  }
+
+  // 4b. Macmillan locating with a popup choice list (no text input to type into)
+  const choiceRoot = el.closest('.locating') as HTMLElement | null;
+  if (choiceRoot && choiceRoot.querySelector('.locatingSpanPopup')) {
+    return pickLocatingChoice(choiceRoot, el, approvedAnswer);
   }
 
   // 5. SPECIAL MACMILLAN CLICK-TO-EDIT GAP / ERROR CORRECTION

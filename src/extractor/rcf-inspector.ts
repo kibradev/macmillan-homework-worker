@@ -22,6 +22,8 @@ export interface RcfInteractionSummary {
   type: string;
   count: number;
   status: 'supported' | 'passive' | 'UNSUPPORTED';
+  /** The same interaction name can hide different mechanisms (e.g. locating: typed correction vs choice popup). */
+  variants?: Record<string, number>;
   /** First element of this type, stripped of feedback/svg/script and truncated. Only for unsupported types. */
   sampleHtml?: string;
 }
@@ -80,10 +82,18 @@ export function inspectRcfPage(doc: Document): RcfInspectionReport {
   const interactions: RcfInteractionSummary[] = Array.from(byType.entries()).map(([type, els]) => {
     const isPassive = PASSIVE_RCF_INTERACTIONS.has(type) || els.every((el) => el.getAttribute('data-ignorenextanswer') === 'y');
     const status = SUPPORTED_RCF_INTERACTIONS.has(type) ? 'supported' : isPassive ? 'passive' : 'UNSUPPORTED';
+    const variants: Record<string, number> = {};
+    if (type === 'locating') {
+      for (const el of els) {
+        const variant = el.querySelector('.locatingSpanPopup') ? 'choice-popup' : 'typed-correction';
+        variants[variant] = (variants[variant] || 0) + 1;
+      }
+    }
     return {
       type,
       count: els.length,
       status,
+      variants: Object.keys(variants).length ? variants : undefined,
       sampleHtml: status === 'UNSUPPORTED' ? sanitizedSample(els[0]) : undefined,
     };
   });

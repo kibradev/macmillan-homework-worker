@@ -289,3 +289,64 @@ test('Macmillan locating - finds the error words and survives an empty dropDown 
   assert.equal(report.questionsDetected, 2);
   assert.ok(!report.warnings.some((w) => w.includes('Scanner')), report.warnings.join('; '));
 });
+
+test('Macmillan locating (choice popup) - options, bracketed mistake, clean report with variants', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-locating-choice.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 3);
+  assert.ok(qs.every((q) => q.type === 'dropdown'));
+  assert.equal(
+    qs[0].promptText,
+    'The phrase in square brackets is a mistake. Choose the option that corrects it: "I [can\'t] swim well when I was younger."'
+  );
+  assert.equal(qs[2].promptText.includes('[am not able]. The website wasn\'t working.'), true, qs[2].promptText);
+  // The "(Clear)" entry is not an answer; the wrong phrase itself is not offered either
+  assert.deepEqual(qs[0].options?.map((o) => o.label), ["couldn't", "wasn't able"]);
+  assert.deepEqual(qs[1].options?.map((o) => o.label), ["can't", 'managed to']);
+  // Feedback explains the answer and must not reach the AI
+  for (const q of qs) assert.doesNotMatch(`${q.promptText} ${q.contextText ?? ''}`, /ability or skills|specific task|past ability/);
+
+  for (const q of qs) assert.equal(doc.querySelectorAll(q.fields[0].selector).length, 1, q.fields[0].selector);
+
+  const report = inspectRcfPage(doc);
+  const locating = report.interactions.find((i) => i.type === 'locating');
+  assert.deepEqual(locating?.variants, { 'choice-popup': 3 });
+  assert.equal(report.questionsDetected, 3);
+  assert.deepEqual(report.warnings, []);
+
+  const typed = inspectRcfPage(loadFixture('tests/fixtures/macmillan-locating.html'));
+  assert.deepEqual(typed.interactions.find((i) => i.type === 'locating')?.variants, { 'typed-correction': 2 });
+});
+
+test('Macmillan locating (choice popup) - filler opens the popup once and picks the option', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-locating-choice.html');
+
+  // Stand-in for RCF: clicking the wrong phrase TOGGLES its popup; an option only registers while the popup is open
+  doc.querySelectorAll('.locating').forEach((locating) => {
+    let open = false;
+    locating.querySelector('.locatingItem')!.addEventListener('click', () => {
+      open = !open;
+    });
+    locating.querySelectorAll('.locatingSpanPopup').forEach((option) =>
+      option.addEventListener('click', () => {
+        if (!open) return;
+        locating.querySelector('.locating_answer')!.textContent = option.classList.contains('clear') ? '' : option.textContent;
+        open = false;
+      })
+    );
+  });
+
+  const qs = extractQuestionsFromGenericDOM(doc);
+  assert.equal((await fillFormField(doc, qs[0], "couldn't")).success, true);
+  assert.equal((await fillFormField(doc, qs[1], 'managed to')).success, true);
+  // typographic apostrophe from the AI must still match
+  assert.equal((await fillFormField(doc, qs[2], 'couldn’t')).success, true);
+
+  const answers = Array.from(doc.querySelectorAll('.locating_answer')).map((el) => el.textContent);
+  assert.deepEqual(answers, ["couldn't", 'managed to', "couldn't"]);
+
+  // An answer that is not on the list fails instead of pretending to succeed
+  const bad = await fillFormField(doc, qs[0], 'is not an option');
+  assert.equal(bad.success, false);
+});
