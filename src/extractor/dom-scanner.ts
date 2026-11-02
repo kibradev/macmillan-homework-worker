@@ -67,6 +67,20 @@ export function isMediaControl(el: Element): boolean {
   return el.matches('input[type="range"]') || !!el.closest('.plyr, .audioInterface, .activityAudioPlayerContainer');
 }
 
+/**
+ * Text of a passage with one line per paragraph / list item / line break. textContent alone glues them together
+ * ("twice a week.At least she's") whenever the markup has no whitespace between blocks. The element is modified.
+ */
+export function textByLines(root: Element): string {
+  const doc = root.ownerDocument;
+  root.querySelectorAll('p, li, div, br, h1, h2, h3, h4, h5, h6, tr').forEach((block) => block.after(doc.createTextNode('\n')));
+  return (root.textContent || '')
+    .split('\n')
+    .map((line) => cleanText(line).replace(/\s+([.,!?;:])/g, '$1'))
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function cleanText(text: string | null | undefined): string {
   if (!text) return '';
   return text
@@ -379,7 +393,7 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
           const passageClone = passage.cloneNode(true) as HTMLElement;
           passageClone.querySelectorAll('.feedback, .dev-feedback, button').forEach((n) => n.remove());
           passageClone.querySelectorAll('.dropDown').forEach((n) => n.replaceWith(clone.ownerDocument.createTextNode(' [_____] ')));
-          const text = cleanText(passageClone.textContent).replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ').replace(/\s+([.,!?;:])/g, '$1');
+          const text = textByLines(passageClone).replace(/(\[_____\][ \t]*)+/g, '[_____] ');
           if (text.length > promptText.length + 20) passageContext = `[Full text]: ${text.slice(0, 3000)}`;
         }
       }
@@ -734,9 +748,10 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
   }
 
   // Find exactly the 7 primary droppable gap spans (ignore duplicate dragTarget wrappers)
-  const droppableGaps = Array.from(
-    doc.querySelectorAll('span.complexDroppable.rcfDroppable[data-rcfid*="complexDroppable_"], span[data-rcfid*="complexDroppable_"]')
-  ).filter((el) => !el.classList.contains('wordBox')) as HTMLElement[];
+  const GAP = '[data-rcfinteraction="complexDroppable"]';
+  // The id of a gap is complexDroppable_3 on some activities and cd_3 on others: only its number matters
+  const gapNumber = (node: Element) => (node.getAttribute('data-rcfid') || '').match(/(\d+)$/)?.[1] ?? '';
+  const droppableGaps = Array.from(doc.querySelectorAll(GAP)).filter((el) => !el.classList.contains('wordBox')) as HTMLElement[];
 
   if (droppableGaps.length > 0 && questions.length === 0) {
     let dIndex = 1;
@@ -744,16 +759,15 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       const parentSentence = (gapEl.closest('p, li, .sentence, .item, tr, div') as HTMLElement | null) || gapEl.parentElement || gapEl;
       const clone = parentSentence.cloneNode(true) as HTMLElement;
       // When one sentence holds several gaps, number them so each question is distinguishable
-      const gapsInSentence = clone.querySelectorAll('[data-rcfid^="complexDroppable_"]');
+      const gapsInSentence = clone.querySelectorAll(GAP);
       // A passage that is sent as context numbers every gap, so the prompt must use the same numbers
       const passageEl = gapEl.closest('.mm_blockText, .mm_interactive') as HTMLElement | null;
       const hasPassage = !!passageEl && passageEl !== parentSentence;
       const isMultiGap = gapsInSentence.length > 1 || hasPassage;
-      const currentGapId = gapEl.getAttribute('data-rcfid');
+      const currentGapNo = gapNumber(gapEl);
       if (isMultiGap) {
         gapsInSentence.forEach((g) => {
-          const gapNo = (g.getAttribute('data-rcfid') || '').replace('complexDroppable_', '');
-          g.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNo}] `));
+          g.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNumber(g)}] `));
         });
       }
       clone.querySelectorAll('.dragTarget, .clickAndStickable, .complexDroppable, .wordBox, button, [style*="display: none"]').forEach((n) => {
@@ -761,10 +775,10 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
         n.replaceWith(placeholder);
       });
       let promptText = cleanText(clone.textContent) || `Gap #${dIndex}`;
-      promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ');
+      promptText = promptText.replace(/(\[\s*_____\s*\]\s*)+/g, '[_____] ').replace(/\s+([.,!?;:])/g, '$1');
       const sentenceText = promptText;
-      if (isMultiGap && currentGapId) {
-        promptText += ` (Answer ONLY for [BLANK ${currentGapId.replace('complexDroppable_', '')}])`;
+      if (isMultiGap && currentGapNo) {
+        promptText += ` (Answer ONLY for [BLANK ${currentGapNo}])`;
       }
 
       // Whole passage (e.g. the full dialogue) as context, with every gap numbered
@@ -773,13 +787,12 @@ export function extractQuestionsFromGenericDOM(doc: Document): Question[] {
       if (passage && passage !== parentSentence) {
         const passageClone = passage.cloneNode(true) as HTMLElement;
         passageClone.querySelectorAll('.wordBox, button').forEach((n) => n.remove());
-        passageClone.querySelectorAll('[data-rcfid^="complexDroppable_"]').forEach((g) => {
-          const gapNo = (g.getAttribute('data-rcfid') || '').replace('complexDroppable_', '');
-          g.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNo}] `));
+        passageClone.querySelectorAll(GAP).forEach((g) => {
+          g.replaceWith(clone.ownerDocument.createTextNode(` [BLANK ${gapNumber(g)}] `));
         });
-        passageContext = cleanText(passageClone.textContent) || undefined;
+        passageContext = textByLines(passageClone) || undefined;
         // One paragraph holding every gap: the passage *is* the prompt, so sending it twice per question only wastes tokens
-        if (passageContext === sentenceText) passageContext = undefined;
+        if (passageContext?.replace(/\n/g, ' ') === sentenceText) passageContext = undefined;
       }
       const singleUse = !!wordBoxEl?.querySelector('[data-restrictcount="1"]');
       const contextText = [passageContext, singleUse ? '[Note: each word in the word bank can be used only once.]' : '']

@@ -523,13 +523,14 @@ export async function fillFormField(
 
     // Check direct Macmillan complexDroppable gap by index
     const directDroppable = findDeepElement(doc, `[data-rcfid="complexDroppable_${question.index}"]`) ||
+                            findDeepElement(doc, `[data-rcfid="cd_${question.index}"]`) ||
                             findDeepElement(doc, `#complexDroppable_${question.index}`);
     if (directDroppable) {
       console.log('[StudyPilot] Matched directly by Macmillan complexDroppable index:', question.index);
       if (await fillAnyElement(doc, directDroppable, approvedAnswer)) return { success: true };
     }
 
-    const allDroppableGaps = Array.from(doc.querySelectorAll('span.complexDroppable.rcfDroppable, span[data-rcfid*="complexDroppable_"]'))
+    const allDroppableGaps = Array.from(doc.querySelectorAll('[data-rcfinteraction="complexDroppable"]'))
       .filter((el, idx, arr) => arr.indexOf(el) === idx) as HTMLElement[];
     if (allDroppableGaps.length >= question.index) {
       const targetGap = allDroppableGaps[question.index - 1];

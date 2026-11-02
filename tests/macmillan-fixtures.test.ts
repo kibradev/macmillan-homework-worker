@@ -908,3 +908,78 @@ test('Macmillan sentence builder - a page that ignores clicks and drags is repor
   assert.equal(result.success, false);
   assert.match(result.error ?? '', /"we're" cümleye eklenemedi \(tıklama ve sürükleme işe yaramadı\)/);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Click-and-stick activity whose gaps are called cd_N (not complexDroppable_N), one sentence per list item
+
+/** Stand-in for the one-word-at-a-time bank: only the .active word can be picked; prev/next move it. */
+function makeBankCarousel(doc: Document) {
+  const words = Array.from(doc.querySelectorAll('.wordBox li.dragItem')) as HTMLElement[];
+  // Registered before the click-and-stick stand-in, so a click on a hidden word never reaches it
+  words.forEach((word) =>
+    word.addEventListener('click', (event) => {
+      if (!word.classList.contains('active')) event.stopImmediatePropagation();
+    })
+  );
+  const move = (delta: number) => {
+    const at = words.findIndex((w) => w.classList.contains('active'));
+    const to = at + delta;
+    if (to < 0 || to >= words.length) return;
+    words[at].classList.remove('active');
+    words[to].classList.add('active');
+  };
+  doc.querySelector('.wordBox .nextItem')!.addEventListener('click', () => move(1));
+  doc.querySelector('.wordBox .previousItem')!.addEventListener('click', () => move(-1));
+}
+
+test('Macmillan drag-and-drop with cd_N gaps - all 8 gaps are found, numbered, and see the whole text', () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-cd.html');
+  const qs = extractQuestionsFromGenericDOM(doc);
+
+  assert.equal(qs.length, 8, 'a page whose gaps are named cd_N used to give 0 questions');
+  assert.deepEqual(qs.map((q) => q.fields[0].selector), [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `[data-rcfid="cd_${n}"]`));
+
+  assert.equal(qs[0].promptText, 'She made a [BLANK 1] to go to the gym twice a week. (Answer ONLY for [BLANK 1])');
+  assert.equal(qs[2].promptText, 'The doctor said she should also [BLANK 3]. (Answer ONLY for [BLANK 3])');
+  assert.deepEqual(qs[0].options?.map((o) => o.label), [
+    'quit smoking', 'resolution', 'keep', 'cut down', 'realistic goals', 'our target', 'until', 'stick to',
+  ]);
+
+  // Every question sees all eight sentences (with numbered blanks), the instruction, and the single-use rule
+  const context = qs[3].contextText ?? '';
+  assert.match(context, /^\[Instructions\]: Complete the sentences\./);
+  assert.match(context, /She made a \[BLANK 1\] to go to the gym twice a week\.\nAt least she's \[BLANK 2\] to 5 cups/);
+  assert.match(context, /keep going \[BLANK 8\] you reach your goal/);
+  assert.match(context, /only once/);
+  assert.doesNotMatch(context, /Previous item|Next item/, 'the list navigation is not part of the text');
+
+  // The authored order in data-origindex is the answer key and is never read
+  assert.doesNotMatch(JSON.stringify(qs), /origindex/);
+
+  const report = inspectRcfPage(doc);
+  assert.equal(report.gapsOnPage, 8);
+  assert.equal(report.questionsDetected, 8);
+  assert.deepEqual(report.warnings, []);
+});
+
+test('Macmillan drag-and-drop with cd_N gaps - phrases go in even when the bank shows one word at a time', async () => {
+  const doc = loadFixture('tests/fixtures/macmillan-dragdrop-cd.html');
+  makeBankCarousel(doc);
+  const rcf = makeClickAndStick(doc);
+  const qs = extractQuestionsFromGenericDOM(doc);
+  const slot = (n: number) => doc.querySelector(`[data-rcfid="cd_${n}"] .dragTarget`) as HTMLElement;
+
+  // "quit smoking" is the active word; "stick to" is seven pages away
+  const first = await fillFormField(doc, qs[2], 'quit smoking');
+  assert.equal(first.success, true, first.error);
+  const last = await fillFormField(doc, qs[3], 'stick to');
+  assert.equal(last.success, true, last.error);
+  const back = await fillFormField(doc, qs[0], 'resolution'); // paging backwards
+  assert.equal(back.success, true, back.error);
+
+  assert.equal(slot(3).textContent, 'quit smoking');
+  assert.equal(slot(4).textContent, 'stick to');
+  assert.equal(slot(1).textContent, 'resolution');
+  assert.equal(slot(2).textContent, '', 'untouched gaps stay empty');
+  void rcf;
+});
