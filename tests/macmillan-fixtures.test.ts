@@ -604,11 +604,11 @@ test('Macmillan ordering - an answer that does not fit the words is refused and 
 
   const tooShort = await fillFormField(doc, qs[3], 'I || need || a');
   assert.equal(tooShort.success, false);
-  assert.match(tooShort.error ?? '', /4 kelime bekleniyordu ama cevapta 3 var/);
+  assert.match(tooShort.error ?? '', /Expected 4 words but the answer has 3/);
 
   const stranger = await fillFormField(doc, qs[3], 'I || need || a || banana');
   assert.equal(stranger.success, false);
-  assert.match(stranger.error ?? '', /"banana" listedeki kelimelerden biri değil/);
+  assert.match(stranger.error ?? '', /"banana" is not one of the words in the list/);
 
   assert.deepEqual(sentence(doc, 4), before);
 });
@@ -621,7 +621,7 @@ test('Macmillan ordering - a list that ignores the drag is reported as a failure
   const result = await fillFormField(doc, qs[3], 'I || need || a || favour');
 
   assert.equal(result.success, false);
-  assert.match(result.error ?? '', /Kelimeler sürüklenemedi\. Şu anki sıra: need I a favour \./);
+  assert.match(result.error ?? '', /Could not drag the words\. Current order: need I a favour \./);
 });
 
 test('Mixed activity - question ids stay unique when several kinds of question share a page', () => {
@@ -887,7 +887,7 @@ test('Macmillan sentence builder - a second run leaves a finished sentence alone
   const otherQs = extractQuestionsFromGenericDOM(other);
   const stranger = await fillFormField(other, otherQs[4], 'we’re || flying');
   assert.equal(stranger.success, false);
-  assert.match(stranger.error ?? '', /"flying" kelime listesinde yok ya da zaten kullanılmış/);
+  assert.match(stranger.error ?? '', /"flying" is not in the word list or has already been used/);
   assert.deepEqual(sentenceOf(other), [], 'a refused answer places nothing');
 
   const clash = loadFixture('tests/fixtures/macmillan-itembased.html');
@@ -895,7 +895,7 @@ test('Macmillan sentence builder - a second run leaves a finished sentence alone
   clash.querySelector('.itemSentenceWordList')!.insertAdjacentHTML('beforeend', '<li data-originalvalue="car">car</li>');
   const clashResult = await fillFormField(clash, extractQuestionsFromGenericDOM(clash)[4], BUILDER_ANSWER);
   assert.equal(clashResult.success, false);
-  assert.match(clashResult.error ?? '', /zaten başka kelimeler var/);
+  assert.match(clashResult.error ?? '', /already contains other words/);
 });
 
 test('Macmillan sentence builder - a page that ignores clicks and drags is reported, not assumed to work', async () => {
@@ -906,7 +906,7 @@ test('Macmillan sentence builder - a page that ignores clicks and drags is repor
   const result = await fillFormField(doc, qs[4], "we're || thinking");
 
   assert.equal(result.success, false);
-  assert.match(result.error ?? '', /"we're" cümleye eklenemedi \(tıklama ve sürükleme işe yaramadı\)/);
+  assert.match(result.error ?? '', /"we're" could not be added to the sentence \(clicking and dragging both failed\)/);
 });
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -49,10 +49,10 @@ export async function runSeries(
   let completed = 0;
 
   const finish = (ok: boolean, reason: string): SeriesResult => {
-    const lead = completed === 1 ? '1 etkinlik tamamlandı' : `${completed} etkinlik tamamlandı`;
+    const lead = completed === 1 ? '1 activity completed' : `${completed} activities completed`;
     report({
       stage: ok ? 'done' : 'error',
-      text: ok ? `${lead}. ${reason}` : `${lead}, sonra durdu: ${reason}`,
+      text: ok ? `${lead}. ${reason}` : `${lead}, then stopped: ${reason}`,
       series: { current: completed, max, finished: true, completed },
     });
     return { completed, ok, reason };
@@ -64,7 +64,7 @@ export async function runSeries(
   };
 
   for (let n = 1; n <= max; n++) {
-    if (control.stopped) return finish(true, 'Durduruldu.');
+    if (control.stopped) return finish(true, 'Stopped.');
 
     // Progress of the single-activity steps, relabelled for the series. Their errors are collected, not shown:
     // the series reports one final message.
@@ -74,7 +74,7 @@ export async function runSeries(
         lastError = p.text;
         return;
       }
-      report({ ...p, stage: p.stage === 'done' ? 'fill' : p.stage, text: `Etkinlik ${n}/${max}: ${p.text}`, series: { current: n, max } });
+      report({ ...p, stage: p.stage === 'done' ? 'fill' : p.stage, text: `Activity ${n}/${max}: ${p.text}`, series: { current: n, max } });
     };
 
     const before = await deps.activityId(tabId);
@@ -86,29 +86,29 @@ export async function runSeries(
       lastError = '';
       session = await scanStep(deps, tabId, scoped);
     }
-    if (!session) return finish(false, lastError || 'Çözülecek soru bulunamadı.');
+    if (!session) return finish(false, lastError || 'No questions to solve were found.');
 
-    if (!(await solveStep(deps, session, scoped))) return finish(false, lastError || 'Sorular çözülemedi.');
+    if (!(await solveStep(deps, session, scoped))) return finish(false, lastError || 'The questions could not be solved.');
 
     const { filled, failed } = await fillStep(deps, tabId, session, scoped);
     if (failed > 0 || filled < session.questions.length) {
       const unanswered = session.questions.length - filled - failed;
-      const parts = [failed ? `${failed} alan işaretlenemedi` : '', unanswered > 0 ? `${unanswered} soru cevapsız kaldı` : ''].filter(Boolean);
-      return finish(false, `Etkinlik ${n}: ${parts.join(', ')}. Hatalı bir etkinlikten sonra ilerlenmez.`);
+      const parts = [failed ? `${failed} fields could not be filled` : '', unanswered > 0 ? `${unanswered} questions left unanswered` : ''].filter(Boolean);
+      return finish(false, `Activity ${n}: ${parts.join(', ')}. It does not move on after a faulty activity.`);
     }
     completed++;
 
-    if (control.stopped) return finish(true, 'Durduruldu.');
-    if (n >= max) return finish(true, `Üst sınıra (${max} etkinlik) ulaşıldı.`);
+    if (control.stopped) return finish(true, 'Stopped.');
+    if (n >= max) return finish(true, `Reached the limit (${max} activities).`);
 
     report({
       stage: 'fill',
-      text: `Etkinlik ${n}/${max} tamam. Sonrakine geçiliyor…`,
+      text: `Activity ${n}/${max} done. Moving on to the next one…`,
       series: { current: n, max },
     });
     const next = await deps.clickNext(tabId);
     if (!next.clicked) {
-      return finish(true, `Sonraki etkinliğe geçilemedi: ${(next.reason ?? 'Next düğmesi bulunamadı').replace(/\.$/, '')}. Son etkinlik olabilir.`);
+      return finish(true, `Could not move on to the next activity: ${(next.reason ?? 'Next button not found').replace(/\.$/, '')}. This may be the last activity.`);
     }
 
     // Wait until the page really shows another activity
@@ -121,13 +121,13 @@ export async function runSeries(
         break;
       }
     }
-    if (control.stopped) return finish(true, 'Durduruldu.');
+    if (control.stopped) return finish(true, 'Stopped.');
     if (!changed) {
-      return finish(false, 'Next\'e basıldı ama sayfa değişmedi. Cevapları kaydetmek için ek bir adım (Check/Submit) gerekiyor olabilir.');
+      return finish(false, 'Next was pressed but the page did not change. Saving the answers may need an extra step (Check/Submit).');
     }
 
     await pause(options.delaySeconds * 1000 * (1 + 0.3 * random()));
   }
 
-  return finish(true, `Üst sınıra (${max} etkinlik) ulaşıldı.`);
+  return finish(true, `Reached the limit (${max} activities).`);
 }

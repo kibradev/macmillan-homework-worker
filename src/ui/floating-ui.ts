@@ -50,9 +50,9 @@ const BOLT = 'M13 2 3 14h7l-1 8 10-12h-7l1-8z';
 const CHEVRON = 'm6 15 6-6 6 6';
 
 const STAGE_LABEL: Record<string, string> = {
-  scan: 'Taranıyor…',
-  solve: 'Çözülüyor…',
-  fill: 'İşaretleniyor…',
+  scan: 'Scanning…',
+  solve: 'Solving…',
+  fill: 'Filling…',
 };
 
 export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
@@ -74,7 +74,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   let seriesRunning = false;
   let stopping = false;
   let open = false;
-  let status: { text: string; tone: Tone } = { text: 'Hazır. "Hızlı Çöz" sayfayı tarar, çözer ve işaretler.', tone: 'idle' };
+  let status: { text: string; tone: Tone } = { text: 'Ready. "Quick Solve" scans the page, solves it and fills in the answers.', tone: 'idle' };
   let fastLabel: string | null = null;
   let labelTimer: ReturnType<typeof setTimeout> | undefined;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -91,7 +91,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   const toast = el('div', 'sp-toast');
   toast.hidden = true;
   toast.setAttribute('role', 'status');
-  toast.title = 'Kapatmak için tıkla';
+  toast.title = 'Click to dismiss';
 
   const panel = el('section', 'sp-panel');
   panel.hidden = true;
@@ -102,7 +102,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   head.appendChild(el('span', undefined, 'StudyPilot'));
   const closeBtn = el('button', 'sp-close', '×');
   closeBtn.type = 'button';
-  closeBtn.setAttribute('aria-label', 'Paneli kapat');
+  closeBtn.setAttribute('aria-label', 'Close panel');
   head.appendChild(closeBtn);
 
   const statusBar = el('div', 'sp-status');
@@ -117,7 +117,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
 
   const actions = el('div', 'sp-actions');
   const actionButtons: Record<string, HTMLButtonElement> = {};
-  for (const [act, label] of [['scan', 'Tara'], ['solve', 'Çöz'], ['fill', 'İşaretle']] as const) {
+  for (const [act, label] of [['scan', 'Scan'], ['solve', 'Solve'], ['fill', 'Fill']] as const) {
     const b = el('button', 'sp-btn', label);
     b.type = 'button';
     b.dataset.act = act;
@@ -126,9 +126,9 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   }
   // Optional mode, kept apart from the one-click solve: solve, press Next, continue
   const seriesBox = el('div', 'sp-series');
-  seriesBox.appendChild(el('div', 'sp-series-title', 'Otomatik ilerle'));
+  seriesBox.appendChild(el('div', 'sp-series-title', 'Auto-advance'));
   seriesBox.appendChild(
-    el('p', 'sp-series-hint', 'Ayrı bir seçenek: her etkinliği çözer, Next\'e basar ve sonrakine geçer. Check/Submit düğmelerine basmaz; sorun çıkarsa durur.')
+    el('p', 'sp-series-hint', 'A separate option: solves each activity, presses Next and moves on to the following one. It never presses Check/Submit and stops if anything goes wrong.')
   );
   const seriesRow = el('div', 'sp-series-row');
   const numberField = (labelText: string, value: number, min: number, max: number) => {
@@ -144,22 +144,22 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     seriesRow.appendChild(wrap);
     return input;
   };
-  const maxInput = numberField('En çok etkinlik', 10, 1, 100);
-  const delayInput = numberField('Bekleme (sn)', 5, 1, 60);
-  const seriesStart = el('button', 'sp-btn sp-series-start', 'Tümünü Çöz');
+  const maxInput = numberField('Max activities', 10, 1, 100);
+  const delayInput = numberField('Delay (sec)', 5, 1, 60);
+  const seriesStart = el('button', 'sp-btn sp-series-start', 'Solve All');
   seriesStart.type = 'button';
   seriesRow.appendChild(seriesStart);
   const confirmBox = el('div', 'sp-confirm');
   confirmBox.hidden = true;
   const confirmText = el('p', 'sp-confirm-text');
   const confirmRow = el('div', 'sp-series-row');
-  const confirmYes = el('button', 'sp-btn', 'Başlat');
+  const confirmYes = el('button', 'sp-btn', 'Start');
   confirmYes.type = 'button';
-  const confirmNo = el('button', 'sp-btn', 'Vazgeç');
+  const confirmNo = el('button', 'sp-btn', 'Cancel');
   confirmNo.type = 'button';
   confirmRow.append(confirmYes, confirmNo);
   confirmBox.append(confirmText, confirmRow);
-  const stopBtn = el('button', 'sp-btn sp-stop', 'Durdur');
+  const stopBtn = el('button', 'sp-btn sp-stop', 'Stop');
   stopBtn.type = 'button';
   stopBtn.hidden = true;
   seriesBox.append(seriesRow, confirmBox, stopBtn);
@@ -169,12 +169,12 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   const dock = el('div', 'sp-dock');
   const fast = el('button', 'sp-fast');
   fast.type = 'button';
-  fast.setAttribute('aria-label', 'Sayfayı tara, çöz ve işaretle');
+  fast.setAttribute('aria-label', 'Scan, solve and fill in this page');
   const fastText = el('span');
   fast.append(icon(doc, BOLT, true), fastText);
   const toggle = el('button', 'sp-toggle');
   toggle.type = 'button';
-  toggle.setAttribute('aria-label', 'Paneli aç veya kapat');
+  toggle.setAttribute('aria-label', 'Open or close panel');
   toggle.appendChild(icon(doc, CHEVRON, false));
   dock.append(fast, toggle);
 
@@ -185,7 +185,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   function renderList() {
     list.textContent = '';
     if (items.length === 0) {
-      list.appendChild(el('li', 'sp-empty', 'Henüz soru yok. "Tara" ile sayfadaki soruları bul.'));
+      list.appendChild(el('li', 'sp-empty', 'No questions yet. Use "Scan" to find the questions on the page.'));
       return;
     }
     for (const item of items) {
@@ -199,16 +199,16 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
       const input = el('input', 'sp-answer');
       input.type = 'text';
       input.value = item.answer;
-      input.placeholder = 'Cevap yok';
+      input.placeholder = 'No answer';
       input.disabled = busy;
-      input.setAttribute('aria-label', `${item.index}. sorunun cevabı`);
+      input.setAttribute('aria-label', `Answer to question ${item.index}`);
       input.addEventListener('input', () => {
         item.answer = input.value;
         if (session) session.answers[item.id] = { ...session.answers[item.id], answer: input.value };
       });
       body.appendChild(input);
       if (item.explanation && item.status !== 'failed') body.appendChild(el('p', 'sp-why', item.explanation));
-      if (item.status === 'failed') body.appendChild(el('p', 'sp-error', item.error || 'Alan eşleştirilemedi.'));
+      if (item.status === 'failed') body.appendChild(el('p', 'sp-error', item.error || 'Could not match the field.'));
       li.appendChild(body);
 
       const mark = el('span', 'sp-mark', item.status === 'filled' ? '✓' : item.status === 'failed' ? '✗' : '');
@@ -230,14 +230,14 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     spinner.hidden = !busy;
 
     fast.disabled = busy;
-    fastText.textContent = fastLabel ?? 'Hızlı Çöz';
+    fastText.textContent = fastLabel ?? 'Quick Solve';
     for (const b of Object.values(actionButtons)) b.disabled = busy;
     seriesStart.disabled = busy;
     maxInput.disabled = busy;
     delayInput.disabled = busy;
     stopBtn.hidden = !seriesRunning;
     stopBtn.disabled = stopping;
-    stopBtn.textContent = stopping ? 'Duruyor…' : 'Durdur';
+    stopBtn.textContent = stopping ? 'Stopping…' : 'Stop';
   }
 
   function setStatus(text: string, tone: Tone, showToast = true) {
@@ -271,17 +271,17 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     if (progress.series?.finished) {
       const ok = progress.stage === 'done';
       setStatus(progress.text, ok ? 'success' : 'error');
-      setFastLabel(ok ? `✓ ${progress.series.completed ?? 0} etkinlik` : 'Durdu', toastMs);
+      setFastLabel(ok ? `✓ ${progress.series.completed ?? 0} activities` : 'Stopped', toastMs);
     } else if (progress.series) {
       setStatus(progress.text, 'busy', true);
-      setFastLabel(`Etkinlik ${progress.series.current}/${progress.series.max}`);
+      setFastLabel(`Activity ${progress.series.current}/${progress.series.max}`);
     } else if (progress.stage === 'error') {
       setStatus(progress.text, 'error');
-      setFastLabel('Hata', toastMs);
+      setFastLabel('Error', toastMs);
     } else if (progress.stage === 'done') {
       const failed = progress.summary?.failed ?? 0;
       setStatus(progress.text, failed > 0 ? 'warning' : 'success');
-      setFastLabel(failed > 0 ? `${progress.summary!.filled}/${progress.summary!.total} işaretlendi` : '✓ İşaretlendi', toastMs);
+      setFastLabel(failed > 0 ? `${progress.summary!.filled}/${progress.summary!.total} filled` : '✓ Filled', toastMs);
     } else {
       setStatus(progress.text, 'busy', true);
       setFastLabel(STAGE_LABEL[progress.stage] ?? null);
@@ -297,7 +297,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     try {
       port = options.connect();
     } catch {
-      setStatus('Eklenti güncellenmiş. Sayfayı yenile (F5) ve tekrar dene.', 'error');
+      setStatus('The extension was updated. Reload the page (F5) and try again.', 'error');
       return;
     }
 
@@ -306,7 +306,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
     seriesRunning = command.cmd === 'series';
     stopping = false;
     let finished = false;
-    setFastLabel('Başlıyor…');
+    setFastLabel('Starting…');
     renderList();
 
     port.onMessage.addListener((message: UiMessage) => {
@@ -325,8 +325,8 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
         session = null;
         items = [];
       }
-      // A stage label ("Çözülüyor…") must not outlive the run that set it
-      if (fastLabel === 'Başlıyor…' || Object.values(STAGE_LABEL).includes(fastLabel ?? '')) fastLabel = null;
+      // A stage label ("Solving…") must not outlive the run that set it
+      if (fastLabel === 'Starting…' || Object.values(STAGE_LABEL).includes(fastLabel ?? '')) fastLabel = null;
       renderChrome();
       renderList();
       try {
@@ -342,8 +342,8 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
       currentPort = null;
       seriesRunning = false;
       stopping = false;
-      setStatus('Bağlantı koptu. Sayfayı yenileyip (F5) tekrar dene.', 'error');
-      setFastLabel('Hata', toastMs);
+      setStatus('Connection lost. Reload the page (F5) and try again.', 'error');
+      setFastLabel('Error', toastMs);
       renderList();
     });
 
@@ -353,7 +353,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   function needSession(): Session | null {
     if (session && session.questions.length > 0) return session;
     open = true;
-    setStatus('Önce "Tara" ile soruları bul.', 'warning', false);
+    setStatus('Scan for questions first.', 'warning', false);
     return null;
   }
 
@@ -393,7 +393,7 @@ export function mountFloatingUi(options: FloatingUiOptions): FloatingUi {
   seriesStart.addEventListener('click', () => {
     if (busy) return;
     const { max, delaySeconds } = seriesOptions();
-    confirmText.textContent = `En çok ${max} etkinlik boyunca çözüp Next'e basacak, aralarda ${delaySeconds} sn bekleyecek. Check/Submit'e basmaz. Başlatılsın mı?`;
+    confirmText.textContent = `Will solve up to ${max} activities, pressing Next after each one and waiting ${delaySeconds} s in between. It never presses Check/Submit. Start?`;
     confirmBox.hidden = false;
   });
   confirmNo.addEventListener('click', () => {

@@ -68,7 +68,7 @@ function world(
       shown < activities && !(options.unreadableFrom !== undefined && shown >= options.unreadableFrom)
         ? { frameId: 7, questions: [question(shown)] }
         : null,
-    describeEmpty: async () => 'Sayfada şunlar var: sortable (desteklenmiyor).',
+    describeEmpty: async () => 'The page contains: sortable (unsupported).',
     fill: async () => {
       log.push(`fill ${shown}`);
       options.onFill?.(shown);
@@ -76,7 +76,7 @@ function world(
     },
     activityId: async () => (shown < activities ? `activity-${shown}` : null),
     clickNext: async () => {
-      if (shown + 1 >= activities) return { clicked: false, reason: 'Next düğmesi bulunamadı.' };
+      if (shown + 1 >= activities) return { clicked: false, reason: 'Next button not found.' };
       log.push('next');
       if (options.stuckAfter === undefined || shown < options.stuckAfter) shown++;
       return { clicked: true };
@@ -98,10 +98,10 @@ test('Series - solves every activity, presses Next between them, and ends normal
   const { result, last } = await run(w, 10);
 
   assert.deepEqual(w.log, ['ai 0', 'fill 0', 'next', 'ai 1', 'fill 1', 'next', 'ai 2', 'fill 2']);
-  assert.deepEqual(result, { completed: 3, ok: true, reason: 'Sonraki etkinliğe geçilemedi: Next düğmesi bulunamadı. Son etkinlik olabilir.' });
+  assert.deepEqual(result, { completed: 3, ok: true, reason: 'Could not move on to the next activity: Next button not found. This may be the last activity.' });
   assert.equal(last.stage, 'done');
   assert.deepEqual(last.series, { current: 3, max: 10, finished: true, completed: 3 });
-  assert.match(last.text, /^3 etkinlik tamamlandı\./);
+  assert.match(last.text, /^3 activities completed\./);
 });
 
 test('Series - stops at the limit and does not press Next once more', async () => {
@@ -110,7 +110,7 @@ test('Series - stops at the limit and does not press Next once more', async () =
 
   assert.equal(result.completed, 2);
   assert.equal(result.ok, true);
-  assert.match(result.reason, /Üst sınıra \(2 etkinlik\) ulaşıldı/);
+  assert.match(result.reason, /Reached the limit \(2 activities\)/);
   assert.equal(w.log.filter((l) => l === 'next').length, 1, 'Next only between the two activities');
   assert.equal(w.shown(), 1);
 });
@@ -122,8 +122,8 @@ test('Series - a field that could not be filled stops the run before Next', asyn
   assert.equal(result.completed, 1);
   assert.equal(result.ok, false);
   assert.equal(last.stage, 'error');
-  assert.match(last.text, /1 etkinlik tamamlandı, sonra durdu: Etkinlik 2: 1 alan işaretlenemedi/);
-  assert.match(last.text, /Hatalı bir etkinlikten sonra ilerlenmez/);
+  assert.match(last.text, /1 activity completed, then stopped: Activity 2: 1 fields could not be filled/);
+  assert.match(last.text, /It does not move on after a faulty activity/);
   assert.equal(w.log.filter((l) => l === 'next').length, 1, 'no Next after the failed activity');
 });
 
@@ -133,7 +133,7 @@ test('Series - an unanswered question stops the run too', async () => {
 
   assert.equal(result.completed, 0);
   assert.equal(result.ok, false);
-  assert.match(last.text, /1 soru cevapsız kaldı/);
+  assert.match(last.text, /1 questions left unanswered/);
   assert.equal(w.log.includes('next'), false);
 });
 
@@ -144,7 +144,7 @@ test('Series - Stop ends the run after the activity in progress, without pressin
 
   assert.equal(result.completed, 2, 'the activity in progress is finished');
   assert.equal(result.ok, true);
-  assert.equal(result.reason, 'Durduruldu.');
+  assert.equal(result.reason, 'Stopped.');
   assert.equal(last.stage, 'done');
   assert.equal(w.log.filter((l) => l === 'next').length, 1, 'no Next after Stop');
 });
@@ -155,7 +155,7 @@ test('Series - a Next that leaves the page unchanged is reported (answers may ne
 
   assert.equal(result.ok, false);
   assert.equal(result.completed, 1);
-  assert.match(last.text, /Next'e basıldı ama sayfa değişmedi/);
+  assert.match(last.text, /Next was pressed but the page did not change/);
   assert.match(last.text, /Check\/Submit/);
 });
 
@@ -171,7 +171,7 @@ test('Series - an activity that cannot be read says what the page contains, afte
 
   assert.equal(result.ok, false);
   assert.equal(result.completed, 1);
-  assert.match(last.text, /Çözülecek soru bulunamadı\. Sayfada şunlar var: sortable \(desteklenmiyor\)/);
+  assert.match(last.text, /No questions to solve were found\. The page contains: sortable \(unsupported\)/);
   assert.equal(scans, 1 + 3, 'first activity once, the unreadable one three times');
 });
 
@@ -181,7 +181,7 @@ test('Series - progress is labelled per activity and only the end is reported as
 
   const labelled = events.filter((e) => e.series && !e.series.finished);
   assert.ok(labelled.length > 0);
-  assert.ok(labelled.some((e) => e.text.startsWith('Etkinlik 2/5: ')));
+  assert.ok(labelled.some((e) => e.text.startsWith('Activity 2/5: ')));
   assert.ok(labelled.every((e) => e.stage !== 'done' && e.stage !== 'error'), 'single-activity "done" must not look like the end of the series');
   assert.equal(events.filter((e) => e.stage === 'done' || e.stage === 'error').length, 1);
 });

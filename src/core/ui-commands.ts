@@ -54,7 +54,7 @@ export async function handleUiCommand(
       }
       case 'fill': {
         if (!command.session.questions.length) {
-          report({ stage: 'error', text: 'Önce soruları tara.' });
+          report({ stage: 'error', text: 'Scan the questions first.' });
         } else {
           await fillStep(deps, tabId, command.session, report);
         }
@@ -63,7 +63,7 @@ export async function handleUiCommand(
       }
     }
   } catch (err) {
-    report({ stage: 'error', text: `Beklenmeyen hata: ${(err as Error).message}` });
+    report({ stage: 'error', text: `Unexpected error: ${(err as Error).message}` });
     send({ type: 'result', session: 'session' in command ? command.session : null });
   }
 }

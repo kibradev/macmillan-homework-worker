@@ -1,177 +1,106 @@
-# StudyPilot — AI-Powered Homework Assistant
+# StudyPilot — AI Homework Assistant
 
-**StudyPilot** is a locally running, privacy-first Chrome Extension (Manifest V3) that assists students with online homework exercises, initially focusing on **Macmillan Education Everywhere / Language Hub**.
+StudyPilot is a Chrome extension (Manifest V3) that reads online English-course exercises, asks an AI model for the answers, and fills them into the page. It is built mainly for **Macmillan Education Everywhere / Language Hub** and also works on simple generic HTML forms.
 
-StudyPilot detects questions, extracts fields and options, generates AI suggestions with explanations, allows students to review and edit answers, and fills approved fields into the webpage upon explicit user approval.
+It runs entirely in your browser. There is no backend and no account: you bring your own API key and the extension talks directly to the AI provider.
 
----
+## Features
 
-## 🌟 Key Features
+- **Quick Solve** — one click on the in-page button scans the activity, asks the AI and fills in the answers.
+- **Review mode** — the popup lists every detected question with the AI's suggested answer and explanation. You can edit answers and approve them before they are filled in.
+- **Auto-advance (optional)** — "Solve All" solves an activity, presses *Next*, waits for the next one and repeats. It asks for confirmation first, has a Stop button, never presses Check/Submit, and stops at the first problem.
+- **Macmillan question types** — radio and checkbox lists, dropdowns, typed gaps, drag-and-drop gaps, word ordering, sentence builders, "locating" tasks, listening activities and multi-frame pages.
+- **Bring your own key** — Google Gemini, OpenAI and Anthropic Claude are supported.
+- **Diagnostics** — *Diagnostic Report* and *Copy HTML* buttons help you report pages the extension does not understand yet.
+- **Safety guard** — submit / hand-in / finish / grade buttons are blocked from being clicked by the extension.
 
-- **Local-First & Zero-Backend Architecture**: Runs 100% inside your browser. No middleman servers, no data logging, no accounts required.
-- **BYO API Key (Bring Your Own Key)**:
-  - **Google Gemini** (`gemini-1.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`)
-  - **OpenAI** (`gpt-4o-mini`, `gpt-4o`, `gpt-3.5-turbo`)
-  - **Anthropic Claude** (`claude-3-5-haiku`, `claude-3-5-sonnet`)
-- **Privacy & Security Focused**:
-  - API keys are stored in `chrome.storage.session` by default (automatically erased when the browser session ends).
-  - API keys are communicated directly to the respective AI provider endpoint.
-- **Multi-Question Type Support**:
-  - Multiple Choice (radio groups)
-  - Fill in the Blanks (inline sentence text inputs)
-  - Dropdown Selection (`<select>` menus)
-  - True / False questions
-  - Short answer / Textareas
-- **Safety Guarantees**:
-  - **Never automatically submits assignments**: Form submission buttons (`submit`, `hand in`, `finish test`, `turn in`) are strictly blocked by safety guards.
-  - **Explicit Approval Required**: Only answers reviewed and checked by the student are filled.
-  - **Synthetic Event Dispatch**: Triggers standard DOM events (`focus`, `input`, `change`, `blur`) and React value setter prototypes so reactive SPAs detect the changes.
-- **Macmillan Platform Adapter**: Detects Macmillan domains and provides documented integration points for real-page DOM testing.
-- **Included Interactive Mock Homework Page**: Enables full end-to-end local testing without needing a Macmillan login.
-
----
-
-## 📁 Architecture Overview
+## Project layout
 
 ```
-studypilot/
-├── dist/                      # Production-ready Chrome Extension build
-├── mock/
-│   └── homework-mock.html     # Interactive test homework page
-├── public/
-│   ├── icons/                 # Extension icons (16px, 48px, 128px)
-│   └── manifest.json          # Chrome Manifest V3 configuration
-├── src/
-│   ├── ai/                    # AI Provider abstraction layer
-│   │   ├── base.ts            # System prompt & structured JSON response validation
-│   │   ├── gemini.ts          # Google Gemini REST implementation
-│   │   ├── openai.ts          # OpenAI Chat Completions implementation
-│   │   ├── anthropic.ts       # Anthropic Claude Messages implementation
-│   │   └── index.ts           # Provider factory & registry
-│   ├── extractor/             # DOM scanning and classification
-│   │   ├── dom-scanner.ts     # Traverses page, links labels to fields, builds CSS selectors
-│   │   └── question-classifier.ts # Categorizes questions by field types and options
-│   ├── filler/                # Safe field filling & event simulation
-│   │   ├── form-filler.ts     # Fills fields with React tracker compatibility & visual flash
-│   │   └── safety-validator.ts# Blocks submit buttons and dangerous elements
-│   ├── platform/              # Modular platform adapters
-│   │   ├── registry.ts        # Platform detection and adapter selector
-│   │   ├── generic.ts         # Standard web form adapter (test pages & LMSs)
-│   │   └── macmillan.ts       # Dedicated Macmillan Education / Language Hub adapter
-│   ├── storage/
-│   │   └── settings.ts        # Session & local storage settings manager
-│   ├── popup/                 # React UI (Popup window)
-│   │   ├── components/        # Header, ScannerTab, SettingsTab, QuestionCard, StatusBanner
-│   │   ├── App.tsx            # Main state coordinator
-│   │   ├── index.css          # Modern dark & light mode styles
-│   │   └── main.tsx           # React DOM root
-│   ├── background/            # MV3 Service Worker
-│   │   └── index.ts
-│   └── content/               # Content Script injected into matching tabs
-│       └── index.ts
-└── tests/
-    └── core.test.ts           # Automated tests for classification, parsing, and safety
+src/
+  ai/          AI providers (Gemini, OpenAI, Anthropic) and the shared prompt/response parser
+  background/  Service worker: orchestrates scan -> solve -> fill across frames
+  content/     Content script injected into pages (scanner, filler, in-page panel)
+  core/        Auto-pilot pipeline, "Solve All" series runner, panel commands
+  extractor/   DOM scanner, question classifier, Next-button finder
+  filler/      Fills answers into the page (drag-and-drop, dropdowns, inputs...) + safety validator
+  platform/    Platform adapters (Macmillan, generic)
+  popup/       React popup / side panel UI
+  storage/     Settings and key storage
+  ui/          In-page floating panel (shadow DOM)
+tests/         Unit tests + saved Macmillan HTML fixtures
+e2e/           End-to-end test in a real Chrome (puppeteer)
+mock/          Local mock homework page for testing without an account
 ```
 
----
+## Installation
 
-## 🚀 Installation & Setup (Chrome Desktop)
+**Requirements:** [Node.js](https://nodejs.org/) 18+ and Google Chrome (or another Chromium browser).
 
-### 1. Prerequisites
-- **Node.js** (v18 or higher; v24 recommended)
-- **npm** (v9 or higher)
-- **Google Chrome** browser
+1. **Get the code and install dependencies**
 
-### 2. Install & Build
-In your terminal, navigate to the project directory and run:
+   ```bash
+   git clone https://github.com/<your-username>/studypilot.git
+   cd studypilot
+   npm install
+   ```
 
-```bash
-# 1. Install dependencies
-npm install
+2. **Build the extension**
 
-# 2. Typecheck TypeScript files
-npm run typecheck
+   ```bash
+   npm run build
+   ```
 
-# 3. Run unit tests
-npm test
+   This creates the `dist/` folder.
 
-# 4. Build extension bundle for production
-npm run build
-```
+3. **Load it in Chrome**
 
-This generates the ready-to-load extension in the `dist/` directory.
+   1. Open `chrome://extensions`.
+   2. Turn on **Developer mode** (top right).
+   3. Click **Load unpacked** and select the `dist/` folder.
+   4. Pin StudyPilot to the toolbar.
 
-### 3. Load the Unpacked Extension in Chrome
+4. **Add an API key**
 
-1. Open Google Chrome.
-2. In the URL address bar, enter `chrome://extensions/` and press **Enter**.
-3. In the top-right corner, toggle **Developer mode** to **ON**.
-4. Click the **Load unpacked** button in the top-left corner.
-5. In the file picker dialog, select the **`dist`** folder inside the `studypilot` directory:
-   `c:\Users\Administrator\Desktop\studypilot\dist`
-6. StudyPilot will appear in your extensions list. Pin it to the Chrome toolbar for easy access.
+   1. Click the StudyPilot icon and open the **AI & Settings** tab.
+   2. Choose a provider and paste your key (for example a free key from [Google AI Studio](https://aistudio.google.com/)).
+   3. Click **Test API Connection**, then **Save Settings**.
 
----
+After changing the code, run `npm run build` again and click the reload icon on the extension card in `chrome://extensions`, then refresh the homework page.
 
-## 🧪 Testing with the Mock Homework Page
+## Usage
 
-You can immediately test StudyPilot without an active Macmillan student account:
+1. Open an activity on Macmillan (or the mock page, see below).
+2. Click the floating **Quick Solve** button at the bottom of the page — or use the popup's **Auto-Pilot** button.
+3. To review answers first, use **Scan** → **Solve** → **Fill** in the in-page panel (open it with the arrow next to the button), or **Scan Only** → **Suggestions** → **Fill Approved Answers** in the popup.
+4. Always check the page and press Check/Submit yourself.
 
-1. In Chrome, open the mock homework page:
-   - Either navigate to: `file:///c:/Users/Administrator/Desktop/studypilot/mock/homework-mock.html`
-   - *Tip:* In `chrome://extensions`, click **Details** on StudyPilot and enable **"Allow access to file URLs"** so content scripts run on local `file://` pages.
-   - Alternatively, serve the mock page using any local HTTP server (e.g. `npx serve mock` or `http-server`).
-2. Click the **StudyPilot** extension icon in your Chrome toolbar.
-3. Switch to the **AI & Settings** tab:
-   - Choose your provider (e.g. **Google Gemini**).
-   - Enter your API key (get a free key from [Google AI Studio](https://aistudio.google.com/)).
-   - Click **Test API Connection** to verify your key.
-   - Click **Save Settings**.
-4. Switch back to the **Assistant** tab:
-   - Click **Scan Homework**. StudyPilot extracts all 5 questions (Multiple Choice, Fill in the Blank, Dropdown, True/False, and Short Answer).
-   - Click **Suggestions** (or *Generate Suggestions*). The AI analyzes each question and provides suggested answers with step-by-step explanations and confidence ratings.
-   - Review and tweak any suggested answer in the editable fields.
-   - Check **Approve to fill** (or click *Approve All*).
-   - Click **Fill Approved Answers**.
-5. Observe each field on the homework page being safely populated with a green highlight outline!
+**Solve All:** open the panel, set *Max activities* and *Delay*, click **Solve All** and confirm. If the extension cannot find the right *Next* button, paste its CSS selector under *Next button selector* in Settings.
 
----
+### Try it without an account
 
-## 🏫 Macmillan Integration & Real-Page Testing Points
+Open `mock/homework-mock.html` in Chrome (enable **Allow access to file URLs** for the extension in `chrome://extensions` → Details), or serve it with `npx serve mock`.
 
-The dedicated Macmillan adapter (`src/platform/macmillan.ts`) is designed for **Macmillan Education Everywhere** and **Language Hub**:
+## Development
 
-1. **Domain Detection**: Detects `*.macmillaneducationeverywhere.com`, `*.languagehub.macmillaneducation.com`, and `*.macmillanenglish.com`.
-2. **Documented Integration Points**:
-   - `[INTEGRATION POINT 1]`: Activity container selectors (`.activity-container`, `[data-activity-id]`, `.exercise-view`).
-   - `[INTEGRATION POINT 2]`: Iframe activity handler for activities embedded inside same-origin frames.
-   - `[INTEGRATION POINT 3]`: Proprietary question markup mapping for Language Hub gap-fills and clickable chips.
-   - `[INTEGRATION POINT 4]`: Custom Angular/React event dispatching when answers are populated.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Rebuild on every change |
+| `npm run build` | Typecheck and build to `dist/` |
+| `npm run typecheck` | TypeScript check only |
+| `npm test` | Unit tests (jsdom + saved Macmillan fixtures) |
+| `npm run e2e` | End-to-end test in a real Chrome with the built extension (needs a local Chrome install and `npm run build` first) |
 
-When testing on a live Macmillan account, inspect the activity DOM elements and update these documented hooks in `src/platform/macmillan.ts`.
+## Privacy & security
 
----
+- No backend, no analytics. Page content is sent only to the AI provider you selected, using your own key.
+- API keys are kept in `chrome.storage.local` by default; tick the session-only option in Settings to keep them in `chrome.storage.session` (erased when the browser closes). Browser extensions cannot fully hide a key from someone with access to your machine, so use a key with a spending limit.
+- Keys are never logged.
 
-## 🔒 Security & Privacy Notes
+## Responsible use
 
-- **Client-Side Key Protection Limitations**: Browser extensions execute on the client machine. API keys stored in the browser cannot be cryptographically hidden from someone who inspects the local browser process.
-- **Session-Only Storage**: By default, StudyPilot saves your API keys in `chrome.storage.session`, meaning keys are cleared when Chrome is closed.
-- **Zero Logging**: API keys and homework questions are never logged to external monitoring services or central servers.
-- **No Data Harvesting**: StudyPilot only interacts with interactive input elements in the active tab when requested by the user.
+StudyPilot is a personal automation and study tool. Using it on graded or teacher-assigned work may break your school's academic-integrity rules or the platform's terms of service. You are responsible for how you use it. The project is not affiliated with or endorsed by Macmillan Education.
 
----
+## License
 
-## 💻 Available Scripts
-
-- `npm run dev` — Builds the extension in watch mode for development.
-- `npm run build` — Runs TypeScript verification and builds the production bundle into `dist/`.
-- `npm run typecheck` — Runs `tsc --noEmit` to validate all TypeScript types.
-- `npm test` — Executes automated unit tests with `tsx --test`.
-
----
-
-## ⚖️ Ethical Use & Safety Notice
-
-StudyPilot is designed as an educational assistant to help students understand challenging exercises and check their reasoning.
-- StudyPilot **never** submits assignments automatically.
-- Users are solely responsible for verifying the accuracy of AI suggestions and complying with their academic institution's honor code and terms of service.
+No license has been chosen yet. Add a `LICENSE` file (for example MIT) before publishing if you want others to be able to reuse the code.

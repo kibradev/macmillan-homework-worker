@@ -330,15 +330,15 @@ export const App: React.FC = () => {
     try {
       const reports = (await collectFromRcfFrames(tabId, 'INSPECT_PAGE')).map((r) => r.report);
       if (reports.length === 0) {
-        return 'Sayfada Macmillan etkinliği bulunamadı: ödev tam yüklenmemiş olabilir. Sayfayı yenileyip (F5) tekrar dene.';
+        return 'No Macmillan activity found on the page: the homework may not have fully loaded. Reload the page (F5) and try again.';
       }
       const found = reports
         .flatMap((r) => r.interactions as Array<{ type: string; status: string }>)
         .filter((i) => i.status !== 'passive')
         .map((i) => (i.status === 'UNSUPPORTED' ? `${i.type} (desteklenmiyor)` : i.type));
       return found.length
-        ? `Sayfada şunlar var: ${found.join(', ')}. Ayrıntı için "Tanı Raporu"nu kopyalayıp gönder.`
-        : 'Sayfada cevaplanabilir bir bileşen bulunamadı.';
+        ? `The page contains: ${found.join(', ')}. For details, copy the "Diagnostic Report" and send it.`
+        : 'No answerable component was found on the page.';
     } catch {
       return '';
     }
@@ -348,7 +348,7 @@ export const App: React.FC = () => {
     setBanner(null);
     const tabId = await getActiveTabId();
     if (!tabId || !(await ensureContentScriptInjected(tabId))) {
-      setBanner({ type: 'warning', text: 'Aktif sekme bulunamadı veya içerik betiği yüklenemedi.' });
+      setBanner({ type: 'warning', text: 'No active tab found, or the content script could not be loaded.' });
       return;
     }
 
@@ -360,11 +360,11 @@ export const App: React.FC = () => {
       setBanner({
         type: warnings.length ? 'warning' : 'success',
         text: warnings.length
-          ? `Tanı raporu panoya kopyalandı. Uyarı: ${warnings[0]}${warnings.length > 1 ? ` (+${warnings.length - 1})` : ''}`
-          : `Tanı raporu panoya kopyalandı (${reports.length} frame). Sorun bulunmadı.`,
+          ? `Diagnostic report copied to the clipboard. Warning: ${warnings[0]}${warnings.length > 1 ? ` (+${warnings.length - 1})` : ''}`
+          : `Diagnostic report copied to the clipboard (${reports.length} frames). No problems found.`,
       });
     } catch (err) {
-      setBanner({ type: 'error', text: `Tanı raporu alınamadı: ${(err as Error).message}` });
+      setBanner({ type: 'error', text: `Could not get the diagnostic report: ${(err as Error).message}` });
     }
   };
 
@@ -372,14 +372,14 @@ export const App: React.FC = () => {
     setBanner(null);
     const tabId = await getActiveTabId();
     if (!tabId || !(await ensureContentScriptInjected(tabId))) {
-      setBanner({ type: 'warning', text: 'Aktif sekme bulunamadı veya içerik betiği yüklenemedi.' });
+      setBanner({ type: 'warning', text: 'No active tab found, or the content script could not be loaded.' });
       return;
     }
 
     try {
       const replies = await collectFromRcfFrames(tabId, 'SNAPSHOT_PAGE');
       if (replies.length === 0) {
-        setBanner({ type: 'warning', text: 'Etkinlik bulunamadı. Ödevin tamamen yüklendiğinden emin ol.' });
+        setBanner({ type: 'warning', text: 'No activity found. Make sure the homework has fully loaded.' });
         return;
       }
       const snapshots = replies.map((r) => r.snapshot);
@@ -387,10 +387,10 @@ export const App: React.FC = () => {
       const kb = Math.round(snapshots.reduce((sum, s) => sum + s.html.length, 0) / 1024);
       setBanner({
         type: 'success',
-        text: `Sayfa HTML'i panoya kopyalandı (${kb} KB${snapshots.some((s) => s.truncated) ? ', kısaltıldı' : ''}). Cevap açıklamaları ve görseller çıkarıldı.`,
+        text: `Page HTML copied to the clipboard (${kb} KB${snapshots.some((s) => s.truncated) ? ', truncated' : ''}). Answer explanations and images were removed.`,
       });
     } catch (err) {
-      setBanner({ type: 'error', text: `HTML kopyalanamadı: ${(err as Error).message}` });
+      setBanner({ type: 'error', text: `Could not copy the HTML: ${(err as Error).message}` });
     }
   };
 
@@ -401,7 +401,7 @@ export const App: React.FC = () => {
     if (!providerConfig.apiKey.trim()) {
       setBanner({
         type: 'warning',
-        text: `Önce Ayarlar (AI & Settings) sekmesinden ${settings.selectedProvider} API anahtarınızı girin.`,
+        text: `First enter your ${settings.selectedProvider} API key in the AI & Settings tab.`,
       });
       setActiveTab('settings');
       return;
@@ -410,7 +410,7 @@ export const App: React.FC = () => {
     setIsScanning(true);
     setBanner({
       type: 'info',
-      text: '1/3 Sayfa taranıyor...',
+      text: '1/3 Scanning page...',
     });
 
     try {
@@ -423,7 +423,7 @@ export const App: React.FC = () => {
         const scanTabId = await getActiveTabId();
         setBanner({
           type: 'warning',
-          text: `Sayfada çözülecek soru tespit edilemedi. ${scanTabId ? await describeUndetected(scanTabId) : ''}`.trim(),
+          text: `No questions to solve were detected on the page. ${scanTabId ? await describeUndetected(scanTabId) : ''}`.trim(),
         });
         return;
       }
@@ -441,7 +441,7 @@ export const App: React.FC = () => {
       setIsGenerating(true);
       setBanner({
         type: 'info',
-        text: `2/3 Yapay zeka soruları çözüyor (${questionsToSolve.length} soru)...`,
+        text: `2/3 The AI is solving the questions (${questionsToSolve.length})...`,
       });
 
       const aiProvider = getAIProvider(providerConfig.providerId);
@@ -469,7 +469,7 @@ export const App: React.FC = () => {
       // 3. Auto-fill into the webpage!
       setBanner({
         type: 'info',
-        text: `3/3 Çözüldü! Cevaplar sayfadaki alanlara otomatik işaretleniyor...`,
+        text: `3/3 Solved! Filling the answers into the fields on the page...`,
       });
 
       await fillItemsList(solvedItems, scanRes.frameId);
@@ -478,7 +478,7 @@ export const App: React.FC = () => {
       setIsGenerating(false);
       setBanner({
         type: 'error',
-        text: `Auto-Pilot hatası: ${(err as Error).message}`,
+        text: `Auto-Pilot error: ${(err as Error).message}`,
       });
     }
   };

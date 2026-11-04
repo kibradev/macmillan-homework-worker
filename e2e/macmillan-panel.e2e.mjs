@@ -1,5 +1,5 @@
 /**
- * End-to-end check of the in-page "Hızlı Çöz" button in a REAL Chrome with the built extension (dist/) loaded.
+ * End-to-end check of the in-page "Quick Solve" button in a REAL Chrome with the built extension (dist/) loaded.
  *
  * What is real: Chrome, the extension (content script, service worker, ports, MAIN-world bridge), a same-origin
  * activity iframe on a *.macmillan.localhost host, and the real jQuery UI selectmenu widget.
@@ -188,7 +188,7 @@ try {
   const shadow = (script) => page.evaluate(`(() => { const r = document.getElementById('studypilot-root').shadowRoot; return (${script})(r); })()`);
 
   const label0 = await shadow(`(r) => r.querySelector('.sp-fast').textContent`);
-  check('the button reads "Hızlı Çöz"', label0 === 'Hızlı Çöz', label0);
+  check('the button reads "Quick Solve"', label0 === 'Quick Solve', label0);
   await page.screenshot({ path: join(shotDir, 'e2e-1-idle.png') });
 
   // ---- one click: scan -> solve -> fill ----------------------------------------------------------------------
@@ -272,22 +272,22 @@ try {
   const courseShadow = (script) => course.evaluate(`(() => { const r = document.getElementById('studypilot-root').shadowRoot; return (${script})(r); })()`);
 
   await courseShadow(`(r) => r.querySelector('.sp-toggle').click()`);
-  await courseShadow(`(r) => { const set = (label, v) => { r.querySelector('input[aria-label="' + label + '"]').value = v; }; set('En çok etkinlik', '5'); set('Bekleme (sn)', '1'); r.querySelector('.sp-series-start').click(); }`);
+  await courseShadow(`(r) => { const set = (label, v) => { r.querySelector('input[aria-label="' + label + '"]').value = v; }; set('Max activities', '5'); set('Delay (sec)', '1'); r.querySelector('.sp-series-start').click(); }`);
   const confirmText = await courseShadow(`(r) => r.querySelector('.sp-confirm-text').textContent`);
-  check('"Tümünü Çöz" asks for confirmation and nothing starts yet', /En çok 5 etkinlik/.test(confirmText) && aiRequests.length === before, confirmText);
-  await courseShadow(`(r) => Array.from(r.querySelectorAll('.sp-confirm .sp-btn')).find((b) => b.textContent === 'Başlat').click()`);
+  check('"Solve All" asks for confirmation and nothing starts yet', /up to 5 activities/.test(confirmText) && aiRequests.length === before, confirmText);
+  await courseShadow(`(r) => Array.from(r.querySelectorAll('.sp-confirm .sp-btn')).find((b) => b.textContent === 'Start').click()`);
 
   await course
     .waitForFunction(
       () => {
         const label = document.getElementById('studypilot-root').shadowRoot.querySelector('.sp-fast').textContent;
-        return label.startsWith('✓') || label === 'Durdu';
+        return label.startsWith('✓') || label === 'Stopped';
       },
       { timeout: 120000, polling: 500 }
     )
     .catch(() => {});
   const seriesOutcome = await courseShadow(`(r) => ({ label: r.querySelector('.sp-fast').textContent, text: r.querySelector('.sp-status').textContent, tone: r.querySelector('.sp-status').dataset.tone })`);
-  check('the series solved all 3 activities and ended normally on the last one', seriesOutcome.label === '✓ 3 etkinlik' && seriesOutcome.tone === 'success', JSON.stringify(seriesOutcome));
+  check('the series solved all 3 activities and ended normally on the last one', seriesOutcome.label === '✓ 3 activities' && seriesOutcome.tone === 'success', JSON.stringify(seriesOutcome));
   check('the AI was asked once per activity (3 requests)', aiRequests.length - before === 3, `${aiRequests.length - before}`);
 
   const nav = await course.evaluate(() => ({ next: window.__nextClicks, submit: window.__submitClicked }));

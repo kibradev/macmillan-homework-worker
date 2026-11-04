@@ -11,7 +11,7 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-test('every source file is valid UTF-8 (Turkish UI text must not be written in a Windows code page)', () => {
+test('every source file is valid UTF-8 (non-ASCII text such as ✓ or ▸ must not be written in a Windows code page)', () => {
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const bad: string[] = [];
   for (const file of [...sourceFiles('src'), ...sourceFiles('tests')]) {

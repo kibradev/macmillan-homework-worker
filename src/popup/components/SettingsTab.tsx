@@ -304,15 +304,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
           />
           <span style={{ fontSize: '11px' }}>
             {localSettings.saveKeyToSessionOnly
-              ? 'Geçici mod (Reload yapınca silinir)'
-              : 'Kalıcı mod: API anahtarı reload yapsan da ASLA silinmez (Önerilen)'}
+              ? 'Temporary mode (the key is erased when the browser session ends)'
+              : 'Persistent mode: the API key survives reloads and browser restarts (recommended)'}
           </span>
         </label>
       </div>
 
       {/* Auto-advance (optional "solve everything" mode) */}
       <div className="form-group">
-        <label className="form-label">Next düğmesi seçicisi (isteğe bağlı)</label>
+        <label className="form-label">Next button selector (optional)</label>
         <input
           type="text"
           className="form-input"
@@ -321,11 +321,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onSaveSettin
             const val = e.target.value;
             setLocalSettings((prev) => ({ ...prev, nextButtonSelector: val }));
           }}
-          placeholder="Boş bırak: etiketine göre bulunur. Örn: button.next-activity"
+          placeholder="Leave empty to find it by its label. E.g. button.next-activity"
         />
         <span className="form-hint">
-          Yalnızca sayfadaki panelin &quot;Tümünü Çöz&quot; seçeneği için. Eklenti Next düğmesini bulamazsa ya da birden
-          fazla aday varsa, düğmenin CSS seçicisini buraya yapıştır.
+          Only used by the &quot;Solve All&quot; option of the on-page panel. If the extension cannot find the Next button, or
+          finds more than one candidate, paste the button&apos;s CSS selector here.
         </span>
       </div>
 

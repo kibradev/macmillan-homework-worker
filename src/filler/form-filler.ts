@@ -183,7 +183,7 @@ async function fillOrdering(
   const container = selector ? findDeepElement(doc, selector) : null;
   const list = container?.querySelector('ul') as HTMLElement | null;
   if (!container || !list) {
-    return { success: false, error: `Sıralama listesi bulunamadı (soru ${question.index}).` };
+    return { success: false, error: `Ordering list not found (question ${question.index}).` };
   }
 
   const itemsNow = () => Array.from(list.children).filter((node) => node.matches('li')) as HTMLElement[];
@@ -198,7 +198,7 @@ async function fillOrdering(
     .filter(Boolean);
   const movable = itemsNow().filter((li) => !isFixed(li));
   if (wanted.length !== movable.length) {
-    return { success: false, error: `${movable.length} kelime bekleniyordu ama cevapta ${wanted.length} var.` };
+    return { success: false, error: `Expected ${movable.length} words but the answer has ${wanted.length}.` };
   }
 
   // Match each wanted word to a distinct element: the same word can appear twice ("you ... you")
@@ -206,7 +206,7 @@ async function fillOrdering(
   const desiredKeys: string[] = [];
   for (const word of wanted) {
     const at = pool.findIndex((li) => wordOf(li) === word);
-    if (at < 0) return { success: false, error: `"${word}" listedeki kelimelerden biri değil.` };
+    if (at < 0) return { success: false, error: `"${word}" is not one of the words in the list.` };
     desiredKeys.push(keyOf(pool.splice(at, 1)[0], -1));
   }
 
@@ -231,7 +231,7 @@ async function fillOrdering(
   }
   return {
     success: false,
-    error: `Kelimeler sürüklenemedi. Şu anki sıra: ${itemsNow().map((li) => li.textContent?.trim()).join(' ')}`,
+    error: `Could not drag the words. Current order: ${itemsNow().map((li) => li.textContent?.trim()).join(' ')}`,
   };
 }
 
@@ -254,7 +254,7 @@ async function fillSentenceBuilder(
   const container = selector ? findDeepElement(doc, selector) : null;
   const list = container?.querySelector('.sentenceBuilder ul, ul.sentenceWordList, ul.itemSentenceWordList') as HTMLElement | null;
   if (!container || !list) {
-    return { success: false, error: `Cümle alanı bulunamadı (soru ${question.index}).` };
+    return { success: false, error: `Sentence area not found (question ${question.index}).` };
   }
 
   const placed = () =>
@@ -270,12 +270,12 @@ async function fillSentenceBuilder(
     .map((part) => part.trim())
     .filter((part) => wordKey(part));
   const wanted = spoken.map(wordKey);
-  if (wanted.length === 0) return { success: false, error: 'Cevapta kelime yok.' };
+  if (wanted.length === 0) return { success: false, error: 'The answer contains no words.' };
 
   // Words already in the sentence (a second run) must be a prefix of the answer; anything else is left alone
   const already = placed();
   if (already.length > wanted.length || already.some((word, i) => word !== wanted[i])) {
-    return { success: false, error: 'Cümle alanında zaten başka kelimeler var; önce onları temizle.' };
+    return { success: false, error: 'The sentence area already contains other words; clear them first.' };
   }
   if (already.length === wanted.length) {
     flashHighlight(container);
@@ -287,7 +287,7 @@ async function fillSentenceBuilder(
   const plan: HTMLElement[] = [];
   for (const [position, word] of wanted.slice(already.length).entries()) {
     const entry = bankItems().find((li) => !taken.has(li) && !li.classList.contains('dragged') && textOf(li) === word);
-    if (!entry) return { success: false, error: `"${spoken[already.length + position]}" kelime listesinde yok ya da zaten kullanılmış.` };
+    if (!entry) return { success: false, error: `"${spoken[already.length + position]}" is not in the word list or has already been used.` };
     taken.add(entry);
     plan.push(entry);
   }
@@ -308,7 +308,7 @@ async function fillSentenceBuilder(
     if (!(await grewTo(target))) {
       await dragItemToEndOf(entry, list);
       if (!(await grewTo(target))) {
-        return { success: false, error: `"${spoken[target - 1]}" cümleye eklenemedi (tıklama ve sürükleme işe yaramadı).` };
+        return { success: false, error: `"${spoken[target - 1]}" could not be added to the sentence (clicking and dragging both failed).` };
       }
     }
   }
@@ -318,7 +318,7 @@ async function fillSentenceBuilder(
     flashHighlight(container);
     return { success: true };
   }
-  return { success: false, error: `Cümle beklenenden farklı çıktı: ${final.join(' ')}` };
+  return { success: false, error: `The sentence did not come out as expected: ${final.join(' ')}` };
 }
 
 /** Ticks every option named in a multiple_select answer ("A || B || C"); options already ticked are left alone. */
@@ -791,7 +791,7 @@ export async function fillAnyElement(doc: Document, el: HTMLElement, approvedAns
       selectEl.dispatchEvent(new Event('change', { bubbles: true }));
 
       // Macmillan RCF uses jQuery UI Selectmenu:
-      // The select element is display: none. Ekranda #ui-id-X-button ve popup menüde #ui-id-X-menu vardır.
+      // The select element is display: none. On screen there is #ui-id-X-button, and the popup menu is #ui-id-X-menu.
       try {
         const docOwner = selectEl.ownerDocument || doc;
         const btnId = `${selectEl.id}-button`;

@@ -35,10 +35,10 @@ export function findNextButton(doc: Document, customSelector?: string): NextButt
     try {
       match = doc.querySelector(selector) as HTMLElement | null;
     } catch {
-      return { reason: `Ayarlardaki seçici geçersiz: ${selector}` };
+      return { reason: `The selector in Settings is invalid: ${selector}` };
     }
-    if (!match) return { reason: `Ayarlardaki seçiciyle düğme bulunamadı: ${selector}` };
-    if (!isUsable(match)) return { reason: 'Next düğmesi şu an kullanılamıyor (devre dışı ya da gizli).' };
+    if (!match) return { reason: `No button found for the selector in Settings: ${selector}` };
+    if (!isUsable(match)) return { reason: 'The Next button is not usable right now (disabled or hidden).' };
     const safety = validateNavigationSafety(match);
     if (!safety.isSafe) return { reason: safety.reason };
     return { element: match };
@@ -51,10 +51,10 @@ export function findNextButton(doc: Document, customSelector?: string): NextButt
     return NEXT_LABEL.test(name) || NEXT_HINT.test(`${el.className} ${el.getAttribute('data-testid') ?? ''} ${el.getAttribute('aria-label') ?? ''}`);
   });
 
-  if (matches.length === 0) return { reason: 'Next düğmesi bulunamadı.' };
+  if (matches.length === 0) return { reason: 'Next button not found.' };
   if (matches.length > 1) {
     return {
-      reason: `Birden fazla Next adayı bulundu (${matches.map(accessibleName).join(' | ')}). Ayarlardan düğmenin CSS seçicisini gir.`,
+      reason: `Multiple Next candidates found (${matches.map(accessibleName).join(' | ')}). Enter the button's CSS selector in Settings.`,
     };
   }
 

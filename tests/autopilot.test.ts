@@ -50,7 +50,7 @@ function makeDeps(overrides: Partial<PipelineDeps> = {}, calls: Calls = { ai: 0,
         },
       }) as any,
     scanFrames: async () => ({ frameId: 7, questions: [question(1), question(2)] }),
-    describeEmpty: async () => 'Sayfada şunlar var: sortable (desteklenmiyor).',
+    describeEmpty: async () => 'The page contains: sortable (unsupported).',
     fill: async (_tab, frameId, q, answer) => {
       calls.fills.push({ frameId, id: q.id, answer });
       return { success: true };
@@ -82,7 +82,7 @@ test('Auto-Pilot - scans, solves and fills every question, reporting each stage'
   );
   const last = events[events.length - 1];
   assert.deepEqual(last.summary, { total: 2, filled: 2, failed: 0 });
-  assert.equal(last.text, '2/2 soru işaretlendi.');
+  assert.equal(last.text, '2/2 questions filled in.');
   assert.ok(last.items!.every((i) => i.status === 'filled'));
   assert.equal(session?.answers['q_1'].explanation, 'because 1');
 });
@@ -113,7 +113,7 @@ test('Auto-Pilot - failures are counted and carry their reason', async () => {
 
   const last = events[events.length - 1];
   assert.deepEqual(last.summary, { total: 2, filled: 1, failed: 1 });
-  assert.match(last.text, /1 soru işaretlendi, 1 hata/);
+  assert.match(last.text, /1 filled in, 1 failed/);
   assert.equal(last.items![1].status, 'failed');
   assert.equal(last.items![1].error, 'Could not match');
 });
@@ -128,7 +128,7 @@ test('Auto-Pilot - without an API key it explains what to do and never calls the
   assert.deepEqual(calls.fills, []);
   const last = events[events.length - 1];
   assert.equal(last.stage, 'error');
-  assert.match(last.text, /API anahtarı yok/);
+  assert.match(last.text, /API key is missing/);
 });
 
 test('Auto-Pilot - a page without questions says what it does contain', async () => {
@@ -139,7 +139,7 @@ test('Auto-Pilot - a page without questions says what it does contain', async ()
 
   assert.equal(session, null);
   assert.equal(calls.ai, 0);
-  assert.match(events[events.length - 1].text, /Çözülecek soru bulunamadı\. Sayfada şunlar var: sortable \(desteklenmiyor\)\./);
+  assert.match(events[events.length - 1].text, /No questions to solve were found\. The page contains: sortable \(unsupported\)\./);
 });
 
 test('Auto-Pilot - an AI failure becomes an error message, not an exception', async () => {
@@ -158,7 +158,7 @@ test('Auto-Pilot - an AI failure becomes an error message, not an exception', as
   assert.deepEqual(calls.fills, []);
   const last = events[events.length - 1];
   assert.equal(last.stage, 'error');
-  assert.match(last.text, /Yapay zeka hatası: quota exceeded/);
+  assert.match(last.text, /AI error: quota exceeded/);
 });
 
 test('Panel commands - fill uses the answers as edited in the panel and skips unanswered questions', async () => {
@@ -177,7 +177,7 @@ test('Panel commands - fill uses the answers as edited in the panel and skips un
 
   assert.deepEqual(calls.fills.map((f) => [f.id, f.answer]), [['q_1', 'edited by the learner']]);
   const done = messages.filter((m) => m.type === 'progress').map((m) => (m as any).progress as Progress).pop()!;
-  assert.match(done.text, /1 soru işaretlendi, 2 soru cevapsız/);
+  assert.match(done.text, /1 filled in, 2 unanswered/);
   // Exactly one result closes the exchange
   assert.equal(messages.filter((m) => m.type === 'result').length, 1);
   assert.equal(messages[messages.length - 1].type, 'result');
@@ -194,14 +194,14 @@ test('Panel commands - an unexpected exception still ends with a result message'
   await handleUiCommand(deps, 1, { cmd: 'scan' }, (m) => messages.push(m));
 
   const error = messages.map((m) => (m as any).progress as Progress | undefined).find((p) => p?.stage === 'error');
-  assert.match(error?.text ?? '', /Beklenmeyen hata: frame vanished/);
+  assert.match(error?.text ?? '', /Unexpected error: frame vanished/);
   assert.deepEqual(messages[messages.length - 1], { type: 'result', session: null });
 });
 
 test('Panel preview - the instruction meant for the AI becomes a small marker for the learner', () => {
   assert.equal(
     previewPrompt("I've [BLANK 3] the data. We need to [BLANK 4]. (Answer ONLY for [BLANK 4])"),
-    "I've [BLANK 3] the data. We need to [BLANK 4].  ▸ boşluk 4"
+    "I've [BLANK 3] the data. We need to [BLANK 4].  ▸ blank 4"
   );
   assert.equal(previewPrompt('She [_____] home.'), 'She [_____] home.');
   const long = previewPrompt('x'.repeat(500));

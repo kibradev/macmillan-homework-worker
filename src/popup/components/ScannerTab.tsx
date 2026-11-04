@@ -69,19 +69,19 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
       >
         {isScanning ? (
           <>
-            <Loader2 size={15} className="spin" /> 1/3 Sayfa Taranıyor...
+            <Loader2 size={15} className="spin" /> 1/3 Scanning Page...
           </>
         ) : isGenerating ? (
           <>
-            <Loader2 size={15} className="spin" /> 2/3 AI Çözüyor...
+            <Loader2 size={15} className="spin" /> 2/3 AI Solving...
           </>
         ) : isFilling ? (
           <>
-            <Loader2 size={15} className="spin" /> 3/3 Sayfaya İşaretleniyor...
+            <Loader2 size={15} className="spin" /> 3/3 Filling In Answers...
           </>
         ) : (
           <>
-            <Zap size={15} /> ⚡ Auto-Pilot (Tara, Çöz & İşaretle)
+            <Zap size={15} /> Auto-Pilot (Scan, Solve & Fill)
           </>
         )}
       </button>
@@ -93,9 +93,9 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
               className="btn btn-secondary"
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               onClick={onDiagnose}
-              title="Sayfadaki Macmillan bileşenlerini analiz edip raporu panoya kopyalar"
+              title="Analyzes the Macmillan components on the page and copies the report to the clipboard"
             >
-              <ClipboardList size={14} /> Tanı Raporu
+              <ClipboardList size={14} /> Diagnostic Report
             </button>
           )}
           {onSnapshot && (
@@ -103,9 +103,9 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
               className="btn btn-secondary"
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               onClick={onSnapshot}
-              title="Etkinliğin temizlenmiş HTML'ini panoya kopyalar (yeni soru tiplerini desteklemek için)"
+              title="Copies the cleaned-up HTML of the activity to the clipboard (helps add support for new question types)"
             >
-              <Code2 size={14} /> HTML Kopyala
+              <Code2 size={14} /> Copy HTML
             </button>
           )}
         </div>
@@ -121,7 +121,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
         >
           {isScanning ? (
             <>
-              <Loader2 size={15} className="spin" /> Taranıyor...
+              <Loader2 size={15} className="spin" /> Scanning...
             </>
           ) : (
             <>
@@ -210,7 +210,7 @@ export const ScannerTab: React.FC<ScannerTabProps> = ({
           </div>
           <p style={{ fontSize: '12px', maxWidth: '280px', lineHeight: 1.5 }}>
             Navigate to an exercise on Macmillan or open the mock homework page, then click{' '}
-            <strong>Scan Homework</strong> to extract questions.
+            <strong>Auto-Pilot</strong> or <strong>Scan Only</strong>.
           </p>
         </div>
       ) : (

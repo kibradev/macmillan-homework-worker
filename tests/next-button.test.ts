@@ -24,7 +24,7 @@ test('Next button - never picks Previous, Submit, Check, Finish or similar', () 
     <button>Finish</button><button>Turn in</button><button>Send</button>`);
   const found = findNextButton(doc);
   assert.equal(found.element, undefined);
-  assert.match(found.reason ?? '', /Next düğmesi bulunamadı/);
+  assert.match(found.reason ?? '', /Next button not found/);
 
   // "Next" together with a dangerous word is not a plain Next either
   assert.equal(findNextButton(page('<button>Next: submit work</button>')).element, undefined);
@@ -33,8 +33,8 @@ test('Next button - never picks Previous, Submit, Check, Finish or similar', () 
 test('Next button - when several candidates exist it presses none and says so', () => {
   const found = findNextButton(page('<button>Next</button><a href="#">Next unit</a>'));
   assert.equal(found.element, undefined);
-  assert.match(found.reason ?? '', /Birden fazla Next adayı bulundu \(Next \| Next unit\)/);
-  assert.match(found.reason ?? '', /CSS seçicisini gir/);
+  assert.match(found.reason ?? '', /Multiple Next candidates found \(Next \| Next unit\)/);
+  assert.match(found.reason ?? '', /CSS selector in Settings/);
 });
 
 test('Next button - disabled and hidden buttons do not count', () => {
@@ -52,8 +52,8 @@ test('Next button - a CSS selector from the settings replaces the search', () =>
   const custom = findNextButton(doc, 'button.go-on');
   assert.equal(custom.element?.textContent, 'Proceed');
 
-  assert.match(findNextButton(doc, 'button.missing').reason ?? '', /seçiciyle düğme bulunamadı/);
-  assert.match(findNextButton(doc, 'button[[').reason ?? '', /seçici geçersiz/);
+  assert.match(findNextButton(doc, 'button.missing').reason ?? '', /No button found for the selector/);
+  assert.match(findNextButton(doc, 'button[[').reason ?? '', /selector in Settings is invalid/);
 });
 
 test('Next button - even a custom selector cannot point at a submit/finish button', () => {

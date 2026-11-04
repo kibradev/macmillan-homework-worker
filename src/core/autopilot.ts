@@ -59,9 +59,9 @@ export type Report = (progress: Progress) => void;
 
 const PROMPT_PREVIEW = 160;
 
-/** Short, learner-facing version of a prompt: the instruction aimed at the AI becomes a small "▸ boşluk N" marker. */
+/** Short, learner-facing version of a prompt: the instruction aimed at the AI becomes a small "▸ blank N" marker. */
 export function previewPrompt(promptText: string): string {
-  const text = promptText.replace(/\s*\(Answer ONLY for \[BLANK (\d+)\]\)$/, '  ▸ boşluk $1');
+  const text = promptText.replace(/\s*\(Answer ONLY for \[BLANK (\d+)\]\)$/, '  ▸ blank $1');
   return text.length > PROMPT_PREVIEW ? `${text.slice(0, PROMPT_PREVIEW)}…` : text;
 }
 
@@ -84,17 +84,17 @@ export function toItems(session: Session, statuses: Record<string, { status: Ite
 
 /** Step 1: find the activity and its questions. Returns null (after reporting why) when there is nothing to solve. */
 export async function scanStep(deps: PipelineDeps, tabId: number, report: Report): Promise<Session | null> {
-  report({ stage: 'scan', text: 'Sayfa taranıyor…' });
+  report({ stage: 'scan', text: 'Scanning page…' });
   const scan = await deps.scanFrames(tabId);
   if (!scan || scan.questions.length === 0) {
     const why = await deps.describeEmpty(tabId).catch(() => '');
-    report({ stage: 'error', text: `Çözülecek soru bulunamadı. ${why}`.trim() });
+    report({ stage: 'error', text: `No questions to solve were found. ${why}`.trim() });
     return null;
   }
   const session: Session = { frameId: scan.frameId, questions: scan.questions, answers: {} };
   report({
     stage: 'scan',
-    text: `${scan.questions.length} soru bulundu.`,
+    text: `${scan.questions.length} questions found.`,
     items: toItems(session),
   });
   return session;
@@ -107,12 +107,12 @@ export async function solveStep(deps: PipelineDeps, session: Session, report: Re
   if (!config.apiKey.trim()) {
     report({
       stage: 'error',
-      text: `${settings.selectedProvider} API anahtarı yok. Tarayıcı çubuğundaki StudyPilot simgesinden Ayarlar'a girip anahtarı ekle.`,
+      text: `${settings.selectedProvider} API key is missing. Open Settings from the StudyPilot icon in the browser toolbar and add one.`,
     });
     return false;
   }
 
-  report({ stage: 'solve', text: `Yapay zeka ${session.questions.length} soruyu çözüyor…`, items: toItems(session) });
+  report({ stage: 'solve', text: `The AI is solving ${session.questions.length} questions…`, items: toItems(session) });
   try {
     const result = await deps.getProvider(config.providerId).generateAnswers(session.questions, config.apiKey, config.modelId);
     session.answers = {};
@@ -124,12 +124,12 @@ export async function solveStep(deps: PipelineDeps, session: Session, report: Re
       };
     }
   } catch (err) {
-    report({ stage: 'error', text: `Yapay zeka hatası: ${(err as Error).message}`, items: toItems(session) });
+    report({ stage: 'error', text: `AI error: ${(err as Error).message}`, items: toItems(session) });
     return false;
   }
 
   const answered = session.questions.filter((q) => session.answers[q.id]?.answer).length;
-  report({ stage: 'solve', text: `${answered}/${session.questions.length} soru cevaplandı.`, items: toItems(session) });
+  report({ stage: 'solve', text: `${answered}/${session.questions.length} questions answered.`, items: toItems(session) });
   return true;
 }
 
@@ -143,7 +143,7 @@ export async function fillStep(deps: PipelineDeps, tabId: number, session: Sessi
   for (const [position, question] of targets.entries()) {
     report({
       stage: 'fill',
-      text: `Cevaplar işaretleniyor… (${position + 1}/${targets.length})`,
+      text: `Filling in answers… (${position + 1}/${targets.length})`,
       items: toItems(session, statuses),
     });
 
@@ -159,7 +159,7 @@ export async function fillStep(deps: PipelineDeps, tabId: number, session: Sessi
       statuses[question.id] = { status: 'filled' };
     } else {
       failed++;
-      statuses[question.id] = { status: 'failed', error: result.error || 'Alan eşleştirilemedi.' };
+      statuses[question.id] = { status: 'failed', error: result.error || 'Could not match the field.' };
     }
   }
 
@@ -168,8 +168,8 @@ export async function fillStep(deps: PipelineDeps, tabId: number, session: Sessi
     stage: 'done',
     text:
       failed === 0 && skipped === 0
-        ? `${filled}/${session.questions.length} soru işaretlendi.`
-        : `${filled} soru işaretlendi${failed ? `, ${failed} hata` : ''}${skipped ? `, ${skipped} soru cevapsız` : ''}.`,
+        ? `${filled}/${session.questions.length} questions filled in.`
+        : `${filled} filled in${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} unanswered` : ''}.`,
     items: toItems(session, statuses),
     summary: { total: session.questions.length, filled, failed },
   });

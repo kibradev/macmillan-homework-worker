@@ -57,8 +57,8 @@ export const chromeDeps: SeriesDeps = {
         if (i.status !== 'passive') found.push(i.status === 'UNSUPPORTED' ? `${i.type} (desteklenmiyor)` : i.type);
       }
     }
-    if (found.length === 0) return 'Ödev tam yüklenmemiş olabilir; sayfayı yenileyip (F5) tekrar dene.';
-    return `Sayfada şunlar var: ${found.join(', ')}.`;
+    if (found.length === 0) return 'The homework may not have fully loaded; reload the page (F5) and try again.';
+    return `The page contains: ${found.join(', ')}.`;
   },
 
   async fill(tabId, frameId, question, answer) {
@@ -67,7 +67,7 @@ export const chromeDeps: SeriesDeps = {
       question,
       answer,
     });
-    return res ?? { success: false, error: 'Sayfa yanıt vermedi. Sayfayı yenileyip (F5) tekrar dene.' };
+    return res ?? { success: false, error: 'The page did not respond. Reload the page (F5) and try again.' };
   },
 
   async activityId(tabId) {
@@ -85,7 +85,7 @@ export const chromeDeps: SeriesDeps = {
       action: 'CLICK_NEXT',
       selector: settings.nextButtonSelector || undefined,
     });
-    if (!res) return { clicked: false, reason: 'Sayfa yanıt vermedi.' };
+    if (!res) return { clicked: false, reason: 'The page did not respond.' };
     return { clicked: !!res.clicked, reason: res.reason };
   },
 
