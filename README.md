@@ -14,6 +14,14 @@ It runs entirely in your browser. There is no backend and no account: you bring 
 - **Diagnostics** — *Diagnostic Report* and *Copy HTML* buttons help you report pages the extension does not understand yet.
 - **Safety guard** — submit / hand-in / finish / grade buttons are blocked from being clicked by the extension.
 
+## Screenshots
+
+The pages below are a local test fixture, not real course content.
+
+| Before | After Quick Solve, with the review panel open |
+| --- | --- |
+| ![Activity with the Quick Solve button](docs/screenshots/before.png) | ![Solved activity and review panel](docs/screenshots/solved-panel.png) |
+
 ## Project layout
 
 ```
