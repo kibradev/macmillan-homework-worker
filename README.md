@@ -40,8 +40,8 @@ mock/          Local mock homework page for testing without an account
 1. **Get the code and install dependencies**
 
    ```bash
-   git clone https://github.com/<your-username>/studypilot.git
-   cd studypilot
+   git clone https://github.com/kibradev/macmillan-homework-worker.git
+   cd macmillan-homework-worker
    npm install
    ```
 
