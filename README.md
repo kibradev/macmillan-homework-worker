@@ -41,7 +41,15 @@ e2e/           End-to-end test in a real Chrome (puppeteer)
 mock/          Local mock homework page for testing without an account
 ```
 
-## Installation
+## Quick install (no Node.js needed)
+
+1. Download `macmillan-homework-worker-v0.1.0.zip` from the [latest release](https://github.com/kibradev/macmillan-homework-worker/releases/latest) and unzip it.
+2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and select the unzipped folder.
+3. Click the StudyPilot icon, open **AI & Settings**, paste your API key and save.
+
+Keep the unzipped folder where it is: Chrome loads the extension from it. To build from source instead, see below.
+
+## Build from source
 
 **Requirements:** [Node.js](https://nodejs.org/) 18+ and Google Chrome (or another Chromium browser).
 
@@ -111,4 +119,4 @@ StudyPilot is a personal automation and study tool. Using it on graded or teache
 
 ## License
 
-No license has been chosen yet. Add a `LICENSE` file (for example MIT) before publishing if you want others to be able to reuse the code.
+[MIT](LICENSE)
